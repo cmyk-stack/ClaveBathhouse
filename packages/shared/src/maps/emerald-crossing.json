@@ -1,0 +1,33 @@
+{
+  "id": "emerald-crossing",
+  "name": "Emerald Crossing",
+  "width": 12,
+  "height": 10,
+  "terrain": [
+    ["grass","grass","road","road","road","grass","forest","forest","grass","grass","grass","grass"],
+    ["grass","forest","forest","dirt","road","grass","forest","hill","grass","grass","road","grass"],
+    ["grass","grass","road","road","road","grass","grass","hill","grass","grass","road","grass"],
+    ["grass","grass","road","water","water","grass","grass","grass","grass","forest","road","grass"],
+    ["grass","grass","road","road","grass","grass","hill","hill","grass","forest","road","grass"],
+    ["grass","hill","hill","road","road","road","road","road","road","road","road","grass"],
+    ["grass","grass","grass","grass","grass","forest","forest","grass","grass","grass","grass","grass"],
+    ["grass","road","road","road","grass","forest","grass","grass","water","water","grass","grass"],
+    ["grass","road","grass","road","road","road","grass","grass","grass","road","road","grass"],
+    ["grass","grass","grass","grass","forest","road","road","road","grass","grass","grass","grass"]
+  ],
+  "towns": [
+    { "id": "bluehaven", "name": "Bluehaven", "ownerId": "local", "x": 1, "y": 2 },
+    { "id": "redcliff", "name": "Redcliff", "ownerId": "enemy", "x": 10, "y": 7 },
+    { "id": "oakwatch", "name": "Oakwatch", "ownerId": "neutral", "x": 6, "y": 5 }
+  ],
+  "heroes": [
+    { "id": "hero-local", "name": "Sir Gallant", "ownerId": "local", "x": 2, "y": 2 },
+    { "id": "hero-enemy", "name": "Lady Mire", "ownerId": "enemy", "x": 9, "y": 7 }
+  ],
+  "resources": [
+    { "id": "gold-1", "kind": "gold", "amount": 500, "x": 4, "y": 1 },
+    { "id": "wood-1", "kind": "wood", "amount": 3, "x": 3, "y": 6 },
+    { "id": "ore-1", "kind": "ore", "amount": 3, "x": 8, "y": 4 },
+    { "id": "gold-2", "kind": "gold", "amount": 700, "x": 7, "y": 8 }
+  ]
+}

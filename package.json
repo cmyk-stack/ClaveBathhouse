@@ -1,0 +1,14 @@
+{
+  "name": "gravity-well-web",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "dev": "npm run dev --workspace @gravity/client",
+    "dev:server": "npm run dev --workspace @gravity/signal-server",
+    "test": "npm run test --workspaces --if-present"
+  }
+}

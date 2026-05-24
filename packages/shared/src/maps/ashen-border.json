@@ -1,0 +1,32 @@
+{
+  "id": "ashen-border",
+  "name": "Ashen Border",
+  "width": 12,
+  "height": 10,
+  "terrain": [
+    ["dirt","dirt","road","road","grass","grass","forest","grass","grass","road","road","dirt"],
+    ["dirt","hill","hill","road","grass","water","water","grass","grass","road","forest","dirt"],
+    ["grass","grass","hill","road","grass","grass","grass","grass","road","road","forest","grass"],
+    ["grass","grass","grass","road","forest","forest","grass","grass","road","hill","hill","grass"],
+    ["road","road","road","road","road","road","road","grass","road","road","road","road"],
+    ["grass","forest","grass","grass","grass","hill","road","grass","grass","forest","grass","grass"],
+    ["grass","forest","water","water","grass","hill","road","road","road","forest","grass","grass"],
+    ["grass","grass","grass","grass","grass","grass","grass","grass","road","grass","grass","grass"],
+    ["dirt","road","road","road","road","grass","forest","grass","road","road","road","dirt"],
+    ["dirt","dirt","grass","grass","road","road","road","grass","grass","grass","dirt","dirt"]
+  ],
+  "towns": [
+    { "id": "dawnhold", "name": "Dawnhold", "ownerId": "local", "x": 1, "y": 4 },
+    { "id": "cinderkeep", "name": "Cinderkeep", "ownerId": "enemy", "x": 10, "y": 4 },
+    { "id": "greyford", "name": "Greyford", "ownerId": "neutral", "x": 6, "y": 8 }
+  ],
+  "heroes": [
+    { "id": "hero-local", "name": "Elena", "ownerId": "local", "x": 2, "y": 4 },
+    { "id": "hero-enemy", "name": "Voren", "ownerId": "enemy", "x": 9, "y": 4 }
+  ],
+  "resources": [
+    { "id": "gold-3", "kind": "gold", "amount": 400, "x": 5, "y": 0 },
+    { "id": "wood-2", "kind": "wood", "amount": 2, "x": 3, "y": 8 },
+    { "id": "ore-2", "kind": "ore", "amount": 2, "x": 8, "y": 2 }
+  ]
+}
