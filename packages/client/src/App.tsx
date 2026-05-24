@@ -457,14 +457,6 @@ export function App() {
             </div>
           </header>
 
-          <nav className="mobile-tabs" aria-label="App sections">
-            {(["home", "book", "locations", "passes", "me"] as AppView[]).map((item) => (
-              <button className={view === item ? "active" : ""} key={item} onClick={() => setView(item)}>
-                {item}
-              </button>
-            ))}
-          </nav>
-
           <section className="app-scroll">
             {view === "home" && (
               <HomeWorkspace
@@ -524,13 +516,77 @@ export function App() {
           <nav className="bottom-nav" aria-label="Primary mobile navigation">
             {(["home", "book", "locations", "passes", "me"] as AppView[]).map((item) => (
               <button className={view === item ? "active" : ""} key={item} onClick={() => setView(item)}>
-                {item}
+                <NavIcon view={item} />
+                <span>{item}</span>
               </button>
             ))}
           </nav>
         </div>
       </section>
     </main>
+  );
+}
+
+function NavIcon({ view }: { view: AppView }) {
+  const common = {
+    "aria-hidden": true,
+    fill: "none",
+    height: 20,
+    stroke: "currentColor",
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    strokeWidth: 2,
+    viewBox: "0 0 24 24",
+    width: 20
+  };
+
+  if (view === "home") {
+    return (
+      <svg {...common}>
+        <path d="M3 11.5 12 4l9 7.5" />
+        <path d="M5.5 10.5V20h13v-9.5" />
+        <path d="M9.5 20v-5h5v5" />
+      </svg>
+    );
+  }
+
+  if (view === "book") {
+    return (
+      <svg {...common}>
+        <path d="M7 3v3" />
+        <path d="M17 3v3" />
+        <path d="M4.5 8h15" />
+        <rect height="16" rx="3" width="15" x="4.5" y="5" />
+        <path d="M9 13h6" />
+        <path d="M9 17h3" />
+      </svg>
+    );
+  }
+
+  if (view === "locations") {
+    return (
+      <svg {...common}>
+        <path d="M12 21s7-5.2 7-11a7 7 0 0 0-14 0c0 5.8 7 11 7 11Z" />
+        <circle cx="12" cy="10" r="2.5" />
+      </svg>
+    );
+  }
+
+  if (view === "passes") {
+    return (
+      <svg {...common}>
+        <path d="M4 8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4Z" />
+        <path d="M9 9h6" />
+        <path d="M9 15h4" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg {...common}>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M5 21a7 7 0 0 1 14 0" />
+    </svg>
   );
 }
 
@@ -766,10 +822,16 @@ function PassesWorkspace({
       <section className="surface voucher-card">
         <p className="eyebrow">Gift vouchers</p>
         <h3>Send a bathhouse visit</h3>
-        <p>Choose a single visit, contrast therapy pack, or dollar value voucher.</p>
+        <p>Choose a single visit or set your own voucher value.</p>
         <div className="voucher-actions">
           <button>$58 visit</button>
-          <button>$120 value</button>
+          <label className="voucher-value">
+            Custom value
+            <span>
+              <strong>$</strong>
+              <input inputMode="decimal" min="1" placeholder="Enter amount" type="number" />
+            </span>
+          </label>
         </div>
       </section>
     </div>
