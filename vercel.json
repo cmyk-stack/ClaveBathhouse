@@ -1,7 +1,7 @@
 {
-  "buildCommand": "npm run build --workspace @gravity/client",
+  "buildCommand": "npm run build:vercel",
   "installCommand": "npm install",
-  "outputDirectory": "packages/client/dist",
+  "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
     {

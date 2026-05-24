@@ -7,6 +7,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
+    "build:vercel": "npm run build --workspace @gravity/client && node scripts/copy-client-dist.mjs",
     "dev": "npm run dev --workspace @gravity/client",
     "dev:server": "npm run dev --workspace @gravity/signal-server",
     "test": "npm run test --workspaces --if-present"
