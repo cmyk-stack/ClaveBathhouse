@@ -399,6 +399,23 @@ button.quiet {
   font-size: 0.86rem;
 }
 
+.pwa-card {
+  display: grid;
+  gap: 12px;
+}
+
+.pwa-card p:not(.eyebrow) {
+  color: #736858;
+  line-height: 1.45;
+  margin-bottom: 0;
+}
+
+.pwa-status-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .facility-strip {
   display: flex;
   gap: 8px;

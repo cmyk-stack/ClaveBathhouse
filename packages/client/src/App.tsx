@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 type AppView = "home" | "book" | "locations" | "passes" | "me";
 type AuthMode = "login" | "signup" | "reset";
@@ -75,6 +75,21 @@ type Location = {
   hours: string;
   image: string;
   facilities: string[];
+};
+
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+};
+
+type PersistedAppState = {
+  bookings: Booking[];
+  customers: Customer[];
+  isAuthenticated: boolean;
+  notices: Notice[];
+  selectedCustomerId: string;
+  transactions: Transaction[];
+  view: AppView;
 };
 
 const sessionTypes: SessionType[] = [
@@ -256,16 +271,26 @@ function waitlistFor(sessionId: string, bookings: Booking[]) {
   return bookings.filter((booking) => booking.sessionId === sessionId && booking.status === "waitlist");
 }
 
+function readPersistedState(): Partial<PersistedAppState> {
+  try {
+    const stored = window.localStorage.getItem("clave-app-state");
+    return stored ? (JSON.parse(stored) as Partial<PersistedAppState>) : {};
+  } catch {
+    return {};
+  }
+}
+
 export function App() {
-  const [view, setView] = useState<AppView>("home");
+  const persistedState = useMemo(() => readPersistedState(), []);
+  const [view, setView] = useState<AppView>(persistedState.view ?? "home");
   const [authMode, setAuthMode] = useState<AuthMode>("login");
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(persistedState.isAuthenticated ?? false);
   const [sessions, setSessions] = useState<Session[]>(initialSessions);
-  const [bookings, setBookings] = useState<Booking[]>(initialBookings);
-  const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
-  const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
-  const [notices, setNotices] = useState<Notice[]>(initialNotices);
-  const [selectedCustomerId, setSelectedCustomerId] = useState("c1");
+  const [bookings, setBookings] = useState<Booking[]>(persistedState.bookings ?? initialBookings);
+  const [customers, setCustomers] = useState<Customer[]>(persistedState.customers ?? initialCustomers);
+  const [transactions, setTransactions] = useState<Transaction[]>(persistedState.transactions ?? initialTransactions);
+  const [notices, setNotices] = useState<Notice[]>(persistedState.notices ?? initialNotices);
+  const [selectedCustomerId, setSelectedCustomerId] = useState(persistedState.selectedCustomerId ?? "c1");
   const [selectedDate, setSelectedDate] = useState("2026-05-24");
   const [selectedType, setSelectedType] = useState("all");
   const [selectedSessions, setSelectedSessions] = useState<string[]>(["s2"]);
@@ -276,6 +301,10 @@ export function App() {
   const [authPassword, setAuthPassword] = useState("");
   const [authPhone, setAuthPhone] = useState("+61 400 100 200");
   const [authMessage, setAuthMessage] = useState("");
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [isStandalone, setIsStandalone] = useState(false);
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine);
+  const [pwaMessage, setPwaMessage] = useState("Offline-ready after first load.");
   const [newCapacity, setNewCapacity] = useState(8);
   const [newTypeId, setNewTypeId] = useState("thermal");
   const [newDate, setNewDate] = useState("2026-05-27");
@@ -299,8 +328,64 @@ export function App() {
   const occupancy =
     sessions.reduce((sum, session) => sum + activeBookingsFor(session.id, bookings).length / session.capacity, 0) / Math.max(sessions.length, 1);
 
+  useEffect(() => {
+    const nextState: PersistedAppState = {
+      bookings,
+      customers,
+      isAuthenticated,
+      notices,
+      selectedCustomerId,
+      transactions,
+      view
+    };
+    window.localStorage.setItem("clave-app-state", JSON.stringify(nextState));
+  }, [bookings, customers, isAuthenticated, notices, selectedCustomerId, transactions, view]);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(display-mode: standalone)");
+    const standaloneNavigator = navigator as Navigator & { standalone?: boolean };
+    setIsStandalone(mediaQuery.matches || Boolean(standaloneNavigator.standalone));
+
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as BeforeInstallPromptEvent);
+      setPwaMessage("Ready to install on this device.");
+    };
+    const handleInstalled = () => {
+      setInstallPrompt(null);
+      setIsStandalone(true);
+      setPwaMessage("Installed. Clave is ready from your home screen.");
+    };
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("appinstalled", handleInstalled);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", handleInstalled);
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
   function pushNotice(channel: Channel, title: string, body: string) {
     setNotices((current) => [{ id: `n${Date.now()}`, channel, title, body }, ...current].slice(0, 8));
+  }
+
+  async function handleInstallApp() {
+    if (!installPrompt) {
+      setPwaMessage(isStandalone ? "Already installed on this device." : "Use your browser menu to add Clave to your home screen.");
+      return;
+    }
+
+    await installPrompt.prompt();
+    const choice = await installPrompt.userChoice;
+    setInstallPrompt(null);
+    setPwaMessage(choice.outcome === "accepted" ? "Install started." : "Install dismissed. You can try again later.");
   }
 
   function handleAuth(event: FormEvent<HTMLFormElement>) {
@@ -561,6 +646,11 @@ export function App() {
               <HomeWorkspace
                 bookings={customerBookings}
                 currentCustomer={currentCustomer}
+                installPromptReady={Boolean(installPrompt)}
+                isOnline={isOnline}
+                isStandalone={isStandalone}
+                onInstallApp={handleInstallApp}
+                pwaMessage={pwaMessage}
                 setView={setView}
                 sessions={sessions}
               />
@@ -837,11 +927,21 @@ type CustomerWorkspaceProps = {
 function HomeWorkspace({
   bookings,
   currentCustomer,
+  installPromptReady,
+  isOnline,
+  isStandalone,
+  onInstallApp,
+  pwaMessage,
   sessions,
   setView
 }: {
   bookings: Booking[];
   currentCustomer: Customer;
+  installPromptReady: boolean;
+  isOnline: boolean;
+  isStandalone: boolean;
+  onInstallApp: () => void;
+  pwaMessage: string;
   sessions: Session[];
   setView: (view: AppView) => void;
 }) {
@@ -880,6 +980,19 @@ function HomeWorkspace({
             <button key={item} onClick={() => setView("locations")}>{item}</button>
           ))}
         </div>
+      </section>
+
+      <section className="surface pwa-card">
+        <div>
+          <p className="eyebrow">App status</p>
+          <h3>{isStandalone ? "Installed app" : installPromptReady ? "Install Clave" : "PWA ready"}</h3>
+          <p>{pwaMessage}</p>
+        </div>
+        <div className="pwa-status-row">
+          <span className={`status ${isOnline ? "paid" : "waitlist"}`}>{isOnline ? "Online" : "Offline"}</span>
+          <span className="pill">Offline cache</span>
+        </div>
+        <button onClick={onInstallApp}>{isStandalone ? "Installed" : "Install app"}</button>
       </section>
     </div>
   );

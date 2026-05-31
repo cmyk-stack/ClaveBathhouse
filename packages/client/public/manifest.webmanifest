@@ -1,0 +1,43 @@
+{
+  "name": "Clave Bathhouse",
+  "short_name": "Clave",
+  "description": "Book bathhouse, sauna, plunge, and recovery spots at Clave Bathhouse.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "browser"],
+  "orientation": "portrait",
+  "background_color": "#f8f1e5",
+  "theme_color": "#2b2118",
+  "categories": ["health", "lifestyle"],
+  "icons": [
+    {
+      "src": "/pwa-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/apple-touch-icon.svg",
+      "sizes": "180x180",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Book spots",
+      "short_name": "Book",
+      "description": "Reserve bathhouse spots",
+      "url": "/?view=book",
+      "icons": [{ "src": "/pwa-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Passes",
+      "short_name": "Passes",
+      "description": "View memberships and vouchers",
+      "url": "/?view=passes",
+      "icons": [{ "src": "/pwa-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    }
+  ]
+}
