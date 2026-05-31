@@ -1,6 +1,7 @@
 import { FormEvent, useMemo, useState } from "react";
 
 type AppView = "home" | "book" | "locations" | "passes" | "me";
+type AuthMode = "login" | "signup" | "reset";
 type BookingStatus = "confirmed" | "waitlist" | "cancelled" | "checked-in";
 type PaymentStatus = "paid" | "refunded";
 type Channel = "push" | "email" | "sms";
@@ -257,17 +258,24 @@ function waitlistFor(sessionId: string, bookings: Booking[]) {
 
 export function App() {
   const [view, setView] = useState<AppView>("home");
+  const [authMode, setAuthMode] = useState<AuthMode>("login");
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [sessions, setSessions] = useState<Session[]>(initialSessions);
   const [bookings, setBookings] = useState<Booking[]>(initialBookings);
   const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
   const [notices, setNotices] = useState<Notice[]>(initialNotices);
-  const [selectedCustomerId] = useState("c1");
+  const [selectedCustomerId, setSelectedCustomerId] = useState("c1");
   const [selectedDate, setSelectedDate] = useState("2026-05-24");
   const [selectedType, setSelectedType] = useState("all");
   const [selectedSessions, setSelectedSessions] = useState<string[]>(["s2"]);
   const [profileName, setProfileName] = useState("Shane Goodhew");
   const [profilePhone, setProfilePhone] = useState("+61 400 100 200");
+  const [authName, setAuthName] = useState("Shane Goodhew");
+  const [authEmail, setAuthEmail] = useState("shane@example.com");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authPhone, setAuthPhone] = useState("+61 400 100 200");
+  const [authMessage, setAuthMessage] = useState("");
   const [newCapacity, setNewCapacity] = useState(8);
   const [newTypeId, setNewTypeId] = useState("thermal");
   const [newDate, setNewDate] = useState("2026-05-27");
@@ -293,6 +301,79 @@ export function App() {
 
   function pushNotice(channel: Channel, title: string, body: string) {
     setNotices((current) => [{ id: `n${Date.now()}`, channel, title, body }, ...current].slice(0, 8));
+  }
+
+  function handleAuth(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (authMode === "reset") {
+      setAuthMessage(`Password reset link sent to ${authEmail}.`);
+      pushNotice("email", "Password reset", `A secure reset link was sent to ${authEmail}.`);
+      return;
+    }
+
+    if (!authEmail || !authPassword) {
+      setAuthMessage("Enter an email and password to continue.");
+      return;
+    }
+
+    if (authMode === "login") {
+      const existing = customers.find((customer) => customer.email.toLowerCase() === authEmail.toLowerCase());
+      if (!existing) {
+        setAuthMessage("No account found for that email. Create one to continue.");
+        return;
+      }
+
+      setSelectedCustomerId(existing.id);
+      setProfileName(existing.name);
+      setProfilePhone(existing.phone);
+      setIsAuthenticated(true);
+      setAuthMessage("");
+      pushNotice("push", "Welcome back", `${existing.name} signed in.`);
+      return;
+    }
+
+    if (!authName.trim()) {
+      setAuthMessage("Enter your name to create an account.");
+      return;
+    }
+
+    const newCustomer: Customer = {
+      id: `c${Date.now()}`,
+      name: authName.trim(),
+      email: authEmail.trim(),
+      phone: authPhone.trim(),
+      membershipId: "drop-in",
+      credits: 0,
+      paymentMethod: "Payment token pending"
+    };
+
+    setCustomers((current) => [newCustomer, ...current]);
+    setSelectedCustomerId(newCustomer.id);
+    setProfileName(newCustomer.name);
+    setProfilePhone(newCustomer.phone);
+    setIsAuthenticated(true);
+    setAuthMessage("");
+    pushNotice("email", "Account created", `Welcome to Clave Bathhouse, ${newCustomer.name}.`);
+  }
+
+  function handleSocialAuth(provider: "Apple" | "Google") {
+    const existing = customers.find((customer) => customer.email.toLowerCase() === authEmail.toLowerCase()) ?? customers[0];
+
+    setSelectedCustomerId(existing.id);
+    setProfileName(existing.name);
+    setProfilePhone(existing.phone);
+    setIsAuthenticated(true);
+    setAuthMode("login");
+    setAuthMessage("");
+    pushNotice("push", `${provider} sign in`, `${existing.name} signed in with ${provider}.`);
+  }
+
+  function handleSignOut() {
+    setIsAuthenticated(false);
+    setAuthMode("login");
+    setAuthPassword("");
+    setView("home");
   }
 
   function allocateWaitlist(sessionId: string, nextBookings: Booking[]) {
@@ -457,17 +538,35 @@ export function App() {
             </div>
           </header>
 
-          <section className="app-scroll">
-            {view === "home" && (
+          {!isAuthenticated ? (
+            <AuthWorkspace
+              authEmail={authEmail}
+              authMessage={authMessage}
+              authMode={authMode}
+              authName={authName}
+              authPassword={authPassword}
+              authPhone={authPhone}
+              handleAuth={handleAuth}
+              handleSocialAuth={handleSocialAuth}
+              setAuthEmail={setAuthEmail}
+              setAuthMode={setAuthMode}
+              setAuthName={setAuthName}
+              setAuthPassword={setAuthPassword}
+              setAuthPhone={setAuthPhone}
+            />
+          ) : (
+            <>
+              <section className="app-scroll">
+                {view === "home" && (
               <HomeWorkspace
                 bookings={customerBookings}
                 currentCustomer={currentCustomer}
                 setView={setView}
                 sessions={sessions}
               />
-            )}
+                )}
 
-            {view === "book" && (
+                {view === "book" && (
               <CustomerWorkspace
                 bookings={customerBookings}
                 cancelBooking={cancelBooking}
@@ -488,19 +587,20 @@ export function App() {
                 subscribe={subscribe}
                 allBookings={bookings}
               />
-            )}
+                )}
 
-            {view === "locations" && <LocationsWorkspace locations={locations} setView={setView} />}
+                {view === "locations" && <LocationsWorkspace locations={locations} setView={setView} />}
 
-            {view === "passes" && (
+                {view === "passes" && (
               <PassesWorkspace currentCustomer={currentCustomer} subscribe={subscribe} />
-            )}
+                )}
 
-            {view === "me" && (
+                {view === "me" && (
               <ProfileWorkspace
                 bookings={customerBookings}
                 cancelBooking={cancelBooking}
                 currentCustomer={currentCustomer}
+                handleSignOut={handleSignOut}
                 notices={notices}
                 profileName={profileName}
                 profilePhone={profilePhone}
@@ -509,19 +609,144 @@ export function App() {
                 setProfilePhone={setProfilePhone}
                 sessions={sessions}
               />
-            )}
-          </section>
-          <nav className="bottom-nav" aria-label="Primary mobile navigation">
-            {(["home", "book", "locations", "passes", "me"] as AppView[]).map((item) => (
-              <button className={view === item ? "active" : ""} key={item} onClick={() => setView(item)}>
-                <NavIcon view={item} />
-                <span>{item}</span>
-              </button>
-            ))}
-          </nav>
+                )}
+              </section>
+              <nav className="bottom-nav" aria-label="Primary mobile navigation">
+                {(["home", "book", "locations", "passes", "me"] as AppView[]).map((item) => (
+                  <button className={view === item ? "active" : ""} key={item} onClick={() => setView(item)}>
+                    <NavIcon view={item} />
+                    <span>{item}</span>
+                  </button>
+                ))}
+              </nav>
+            </>
+          )}
         </div>
       </section>
     </main>
+  );
+}
+
+function AuthWorkspace({
+  authEmail,
+  authMessage,
+  authMode,
+  authName,
+  authPassword,
+  authPhone,
+  handleAuth,
+  handleSocialAuth,
+  setAuthEmail,
+  setAuthMode,
+  setAuthName,
+  setAuthPassword,
+  setAuthPhone
+}: {
+  authEmail: string;
+  authMessage: string;
+  authMode: AuthMode;
+  authName: string;
+  authPassword: string;
+  authPhone: string;
+  handleAuth: (event: FormEvent<HTMLFormElement>) => void;
+  handleSocialAuth: (provider: "Apple" | "Google") => void;
+  setAuthEmail: (value: string) => void;
+  setAuthMode: (mode: AuthMode) => void;
+  setAuthName: (value: string) => void;
+  setAuthPassword: (value: string) => void;
+  setAuthPhone: (value: string) => void;
+}) {
+  const title = authMode === "signup" ? "Create your account" : authMode === "reset" ? "Reset password" : "Welcome back";
+  const action = authMode === "signup" ? "Create account" : authMode === "reset" ? "Send reset link" : "Sign in";
+
+  return (
+    <section className="auth-screen">
+      <div className="auth-card">
+        <p className="eyebrow">Member access</p>
+        <h3>{title}</h3>
+        <p>
+          {authMode === "signup"
+            ? "Save your details, payment method, vouchers, and bathhouse bookings."
+            : authMode === "reset"
+              ? "Enter your account email and we will send a secure reset link."
+              : "Sign in to book spots, manage passes, and view your next visit."}
+        </p>
+
+        <form className="auth-form" onSubmit={handleAuth}>
+          {authMode === "signup" && (
+            <>
+              <label>
+                Name
+                <input autoComplete="name" value={authName} onChange={(event) => setAuthName(event.target.value)} />
+              </label>
+              <label>
+                Phone
+                <input autoComplete="tel" value={authPhone} onChange={(event) => setAuthPhone(event.target.value)} />
+              </label>
+            </>
+          )}
+
+          <label>
+            Email
+            <input autoComplete="email" type="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} />
+          </label>
+
+          {authMode !== "reset" && (
+            <label>
+              Password
+              <input
+                autoComplete={authMode === "signup" ? "new-password" : "current-password"}
+                type="password"
+                value={authPassword}
+                onChange={(event) => setAuthPassword(event.target.value)}
+              />
+            </label>
+          )}
+
+          {authMessage && <p className="auth-message">{authMessage}</p>}
+          <button>{action}</button>
+        </form>
+
+        <div className="social-auth">
+          <button onClick={() => handleSocialAuth("Apple")} type="button">
+            <AppleIcon />
+            <span>Apple</span>
+          </button>
+          <button onClick={() => handleSocialAuth("Google")} type="button">
+            <GoogleIcon />
+            <span>Google</span>
+          </button>
+        </div>
+
+        <div className="auth-links">
+          {authMode !== "login" && <button onClick={() => setAuthMode("login")}>Back to login</button>}
+          {authMode !== "signup" && <button onClick={() => setAuthMode("signup")}>Create account</button>}
+          {authMode !== "reset" && <button onClick={() => setAuthMode("reset")}>Forgot password</button>}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function AppleIcon() {
+  return (
+    <svg aria-hidden="true" className="brand-icon" viewBox="0 0 24 24">
+      <path
+        d="M16.7 12.4c0-2.1 1.7-3.1 1.8-3.2-1-1.4-2.5-1.6-3-1.6-1.3-.1-2.5.8-3.2.8-.7 0-1.7-.8-2.8-.8-1.4 0-2.8.8-3.5 2.1-1.5 2.5-.4 6.3 1.1 8.3.7 1 1.6 2.2 2.7 2.1 1.1 0 1.5-.7 2.8-.7s1.7.7 2.8.7c1.2 0 1.9-1 2.6-2 .8-1.2 1.1-2.3 1.2-2.3 0-.1-2.5-1-2.5-3.4ZM14.7 6.2c.6-.7 1-1.7.9-2.7-.9 0-1.9.6-2.5 1.3-.6.6-1 1.6-.9 2.6.9.1 1.9-.5 2.5-1.2Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+function GoogleIcon() {
+  return (
+    <svg aria-hidden="true" className="brand-icon" viewBox="0 0 24 24">
+      <path d="M21.6 12.2c0-.7-.1-1.3-.2-1.9H12v3.6h5.4c-.2 1.2-.9 2.2-1.9 2.9v2.4h3.1c1.8-1.7 3-4.2 3-7Z" fill="#4285F4" />
+      <path d="M12 22c2.7 0 5- .9 6.6-2.5l-3.1-2.4c-.9.6-2 1-3.5 1-2.6 0-4.8-1.8-5.6-4.1H3.2v2.5C4.8 19.7 8.1 22 12 22Z" fill="#34A853" />
+      <path d="M6.4 14c-.2-.6-.3-1.3-.3-2s.1-1.4.3-2V7.5H3.2C2.4 8.8 2 10.3 2 12s.4 3.2 1.2 4.5L6.4 14Z" fill="#FBBC05" />
+      <path d="M12 5.9c1.5 0 2.8.5 3.8 1.5l2.8-2.8C16.9 3 14.7 2 12 2 8.1 2 4.8 4.3 3.2 7.5L6.4 10c.8-2.3 3-4.1 5.6-4.1Z" fill="#EA4335" />
+    </svg>
   );
 }
 
@@ -833,6 +1058,7 @@ function ProfileWorkspace({
   bookings,
   cancelBooking,
   currentCustomer,
+  handleSignOut,
   notices,
   profileName,
   profilePhone,
@@ -844,6 +1070,7 @@ function ProfileWorkspace({
   bookings: Booking[];
   cancelBooking: (bookingId: string) => void;
   currentCustomer: Customer;
+  handleSignOut: () => void;
   notices: Notice[];
   profileName: string;
   profilePhone: string;
@@ -877,6 +1104,13 @@ function ProfileWorkspace({
           </label>
           <button>Save profile</button>
         </form>
+      </section>
+
+      <section className="surface account-actions">
+        <p className="eyebrow">Security</p>
+        <h3>Signed in as {currentCustomer.name}</h3>
+        <p>{currentCustomer.email}</p>
+        <button className="quiet" onClick={handleSignOut}>Sign out</button>
       </section>
 
       <section className="surface">
