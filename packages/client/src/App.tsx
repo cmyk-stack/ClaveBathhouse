@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { Analytics } from "@vercel/analytics/react";
 
 type AppView = "home" | "book" | "locations" | "passes" | "me";
 type AuthMode = "login" | "signup" | "reset";
@@ -713,6 +714,7 @@ export function App() {
           )}
         </div>
       </section>
+      <Analytics />
     </main>
   );
 }
