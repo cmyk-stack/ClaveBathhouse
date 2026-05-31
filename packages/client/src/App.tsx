@@ -608,10 +608,6 @@ export function App() {
         </div>
 
         <div className="phone-shell" aria-label="Clave Bathhouse mobile app preview">
-          <div className="phone-status">
-            <span>9:41</span>
-            <span>Clave</span>
-          </div>
           <header className="app-hero">
             <div className="hero-image" aria-hidden="true">
               <div className="hero-mist" />
