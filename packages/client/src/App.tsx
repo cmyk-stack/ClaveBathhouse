@@ -135,8 +135,8 @@ const plans: MembershipPlan[] = [
 const initialCustomers: Customer[] = [
   {
     id: "c1",
-    name: "Ava Stone",
-    email: "ava@example.com",
+    name: "Shane Goodhew",
+    email: "shane@example.com",
     phone: "+61 400 100 200",
     membershipId: "flow",
     credits: 2,
@@ -262,11 +262,11 @@ export function App() {
   const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
   const [notices, setNotices] = useState<Notice[]>(initialNotices);
-  const [selectedCustomerId, setSelectedCustomerId] = useState("c1");
+  const [selectedCustomerId] = useState("c1");
   const [selectedDate, setSelectedDate] = useState("2026-05-24");
   const [selectedType, setSelectedType] = useState("all");
   const [selectedSessions, setSelectedSessions] = useState<string[]>(["s2"]);
-  const [profileName, setProfileName] = useState("Ava Stone");
+  const [profileName, setProfileName] = useState("Shane Goodhew");
   const [profilePhone, setProfilePhone] = useState("+61 400 100 200");
   const [newCapacity, setNewCapacity] = useState(8);
   const [newTypeId, setNewTypeId] = useState("thermal");
@@ -482,13 +482,11 @@ export function App() {
                 sessions={visibleSessions}
                 setProfileName={setProfileName}
                 setProfilePhone={setProfilePhone}
-                setSelectedCustomerId={setSelectedCustomerId}
                 setSelectedDate={setSelectedDate}
                 setSelectedSessions={setSelectedSessions}
                 setSelectedType={setSelectedType}
                 subscribe={subscribe}
                 allBookings={bookings}
-                customers={customers}
               />
             )}
 
@@ -595,7 +593,6 @@ type CustomerWorkspaceProps = {
   bookings: Booking[];
   cancelBooking: (bookingId: string) => void;
   currentCustomer: Customer;
-  customers: Customer[];
   handleCheckout: () => void;
   profileName: string;
   profilePhone: string;
@@ -606,7 +603,6 @@ type CustomerWorkspaceProps = {
   sessions: Session[];
   setProfileName: (value: string) => void;
   setProfilePhone: (value: string) => void;
-  setSelectedCustomerId: (value: string) => void;
   setSelectedDate: (value: string) => void;
   setSelectedSessions: (value: string[]) => void;
   setSelectedType: (value: string) => void;
@@ -670,7 +666,6 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
     bookings,
     cancelBooking,
     currentCustomer,
-    customers,
     handleCheckout,
     profileName,
     profilePhone,
@@ -681,7 +676,6 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
     sessions,
     setProfileName,
     setProfilePhone,
-    setSelectedCustomerId,
     setSelectedDate,
     setSelectedSessions,
     setSelectedType,
@@ -704,13 +698,10 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
             <p className="eyebrow">Mobile app</p>
             <h3>Book sauna spots</h3>
           </div>
-          <select value={currentCustomer.id} onChange={(event) => setSelectedCustomerId(event.target.value)} aria-label="Current customer">
-            {customers.map((customer) => (
-              <option key={customer.id} value={customer.id}>
-                {customer.name}
-              </option>
-            ))}
-          </select>
+          <div className="logged-in-user" aria-label="Logged in user">
+            <span>Logged in as</span>
+            <strong>{currentCustomer.name}</strong>
+          </div>
         </div>
 
         <div className="filter-row">
