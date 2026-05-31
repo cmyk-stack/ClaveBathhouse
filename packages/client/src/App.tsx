@@ -92,6 +92,13 @@ type PersistedAppState = {
   view: AppView;
 };
 
+type AuthResponse = {
+  customer?: Customer;
+  message?: string;
+  state?: Partial<PersistedAppState> | null;
+  error?: string;
+};
+
 const sessionTypes: SessionType[] = [
   {
     id: "thermal",
@@ -280,6 +287,18 @@ function readPersistedState(): Partial<PersistedAppState> {
   }
 }
 
+async function postJson<T>(url: string, payload: unknown): Promise<T> {
+  const response = await fetch(url, {
+    body: JSON.stringify(payload),
+    headers: { "Content-Type": "application/json" },
+    method: "POST"
+  });
+
+  const data = (await response.json()) as T;
+  if (!response.ok) throw new Error((data as { message?: string }).message ?? "Request failed");
+  return data;
+}
+
 export function App() {
   const persistedState = useMemo(() => readPersistedState(), []);
   const [view, setView] = useState<AppView>(persistedState.view ?? "home");
@@ -305,6 +324,7 @@ export function App() {
   const [isStandalone, setIsStandalone] = useState(false);
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const [pwaMessage, setPwaMessage] = useState("Offline-ready after first load.");
+  const [syncStatus, setSyncStatus] = useState<"local" | "syncing" | "synced" | "error">("local");
   const [newCapacity, setNewCapacity] = useState(8);
   const [newTypeId, setNewTypeId] = useState("thermal");
   const [newDate, setNewDate] = useState("2026-05-27");
@@ -342,6 +362,32 @@ export function App() {
   }, [bookings, customers, isAuthenticated, notices, selectedCustomerId, transactions, view]);
 
   useEffect(() => {
+    if (!isAuthenticated || !isOnline) return;
+
+    const syncTimer = window.setTimeout(() => {
+      const customer = customers.find((item) => item.id === selectedCustomerId);
+      if (!customer) return;
+
+      const state: PersistedAppState = {
+        bookings,
+        customers,
+        isAuthenticated,
+        notices,
+        selectedCustomerId,
+        transactions,
+        view
+      };
+
+      setSyncStatus("syncing");
+      postJson<{ ok: boolean }>("/api/state", { customer, state })
+        .then(() => setSyncStatus("synced"))
+        .catch(() => setSyncStatus("error"));
+    }, 650);
+
+    return () => window.clearTimeout(syncTimer);
+  }, [bookings, customers, isAuthenticated, isOnline, notices, selectedCustomerId, transactions, view]);
+
+  useEffect(() => {
     const mediaQuery = window.matchMedia("(display-mode: standalone)");
     const standaloneNavigator = navigator as Navigator & { standalone?: boolean };
     setIsStandalone(mediaQuery.matches || Boolean(standaloneNavigator.standalone));
@@ -376,6 +422,22 @@ export function App() {
     setNotices((current) => [{ id: `n${Date.now()}`, channel, title, body }, ...current].slice(0, 8));
   }
 
+  function applyRemoteSession(customer: Customer, remoteState?: Partial<PersistedAppState> | null) {
+    setSelectedCustomerId(customer.id);
+    setProfileName(customer.name);
+    setProfilePhone(customer.phone);
+    setCustomers((current) => {
+      const withoutCustomer = current.filter((item) => item.id !== customer.id);
+      return [customer, ...withoutCustomer];
+    });
+
+    if (remoteState?.bookings) setBookings(remoteState.bookings);
+    if (remoteState?.customers) setCustomers(remoteState.customers);
+    if (remoteState?.notices) setNotices(remoteState.notices);
+    if (remoteState?.transactions) setTransactions(remoteState.transactions);
+    if (remoteState?.view) setView(remoteState.view);
+  }
+
   async function handleInstallApp() {
     if (!installPrompt) {
       setPwaMessage(isStandalone ? "Already installed on this device." : "Use your browser menu to add Clave to your home screen.");
@@ -388,11 +450,16 @@ export function App() {
     setPwaMessage(choice.outcome === "accepted" ? "Install started." : "Install dismissed. You can try again later.");
   }
 
-  function handleAuth(event: FormEvent<HTMLFormElement>) {
+  async function handleAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (authMode === "reset") {
-      setAuthMessage(`Password reset link sent to ${authEmail}.`);
+      try {
+        const result = await postJson<AuthResponse>("/api/auth", { email: authEmail, mode: "reset" });
+        setAuthMessage(result.message ?? `Password reset link sent to ${authEmail}.`);
+      } catch {
+        setAuthMessage(`Password reset link queued locally for ${authEmail}.`);
+      }
       pushNotice("email", "Password reset", `A secure reset link was sent to ${authEmail}.`);
       return;
     }
@@ -403,15 +470,23 @@ export function App() {
     }
 
     if (authMode === "login") {
-      const existing = customers.find((customer) => customer.email.toLowerCase() === authEmail.toLowerCase());
+      let existing = customers.find((customer) => customer.email.toLowerCase() === authEmail.toLowerCase());
+      try {
+        const result = await postJson<AuthResponse>("/api/auth", { email: authEmail, mode: "login" });
+        if (result.customer) {
+          applyRemoteSession(result.customer, result.state);
+          existing = result.customer;
+        }
+      } catch {
+        setSyncStatus("error");
+      }
+
       if (!existing) {
         setAuthMessage("No account found for that email. Create one to continue.");
         return;
       }
 
-      setSelectedCustomerId(existing.id);
-      setProfileName(existing.name);
-      setProfilePhone(existing.phone);
+      applyRemoteSession(existing);
       setIsAuthenticated(true);
       setAuthMessage("");
       pushNotice("push", "Welcome back", `${existing.name} signed in.`);
@@ -433,21 +508,37 @@ export function App() {
       paymentMethod: "Payment token pending"
     };
 
-    setCustomers((current) => [newCustomer, ...current]);
-    setSelectedCustomerId(newCustomer.id);
-    setProfileName(newCustomer.name);
-    setProfilePhone(newCustomer.phone);
+    try {
+      const result = await postJson<AuthResponse>("/api/auth", { customer: newCustomer, mode: "signup" });
+      applyRemoteSession(result.customer ?? newCustomer, result.state);
+      setSyncStatus("synced");
+    } catch {
+      setCustomers((current) => [newCustomer, ...current]);
+      setSelectedCustomerId(newCustomer.id);
+      setProfileName(newCustomer.name);
+      setProfilePhone(newCustomer.phone);
+      setSyncStatus("error");
+    }
     setIsAuthenticated(true);
     setAuthMessage("");
     pushNotice("email", "Account created", `Welcome to Clave Bathhouse, ${newCustomer.name}.`);
   }
 
-  function handleSocialAuth(provider: "Apple" | "Google") {
-    const existing = customers.find((customer) => customer.email.toLowerCase() === authEmail.toLowerCase()) ?? customers[0];
+  async function handleSocialAuth(provider: "Apple" | "Google") {
+    let existing = customers.find((customer) => customer.email.toLowerCase() === authEmail.toLowerCase()) ?? customers[0];
 
-    setSelectedCustomerId(existing.id);
-    setProfileName(existing.name);
-    setProfilePhone(existing.phone);
+    try {
+      const result = await postJson<AuthResponse>("/api/auth", { email: existing.email, mode: "social", provider });
+      if (result.customer) {
+        applyRemoteSession(result.customer, result.state);
+        existing = result.customer;
+        setSyncStatus("synced");
+      }
+    } catch {
+      setSyncStatus("error");
+    }
+
+    applyRemoteSession(existing);
     setIsAuthenticated(true);
     setAuthMode("login");
     setAuthMessage("");
@@ -649,6 +740,7 @@ export function App() {
                 pwaMessage={pwaMessage}
                 setView={setView}
                 sessions={sessions}
+                syncStatus={syncStatus}
               />
                 )}
 
@@ -929,7 +1021,8 @@ function HomeWorkspace({
   onInstallApp,
   pwaMessage,
   sessions,
-  setView
+  setView,
+  syncStatus
 }: {
   bookings: Booking[];
   currentCustomer: Customer;
@@ -940,6 +1033,7 @@ function HomeWorkspace({
   pwaMessage: string;
   sessions: Session[];
   setView: (view: AppView) => void;
+  syncStatus: "local" | "syncing" | "synced" | "error";
 }) {
   const nextBooking = bookings.find((booking) => booking.status === "confirmed" || booking.status === "checked-in");
   const nextSession = nextBooking ? sessions.find((session) => session.id === nextBooking.sessionId) : sessions[0];
@@ -986,6 +1080,9 @@ function HomeWorkspace({
         </div>
         <div className="pwa-status-row">
           <span className={`status ${isOnline ? "paid" : "waitlist"}`}>{isOnline ? "Online" : "Offline"}</span>
+          <span className={`status ${syncStatus === "synced" ? "paid" : syncStatus === "error" ? "waitlist" : ""}`}>
+            {syncStatus === "syncing" ? "Syncing" : syncStatus === "synced" ? "Synced" : syncStatus === "error" ? "Local fallback" : "Local"}
+          </span>
           <span className="pill">Offline cache</span>
         </div>
         <button onClick={onInstallApp}>{isStandalone ? "Installed" : "Install app"}</button>
