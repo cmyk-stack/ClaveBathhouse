@@ -1,10 +1,11 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
-type AppView = "home" | "book" | "locations" | "passes" | "me";
+type AppView = "home" | "book" | "locations" | "passes" | "me" | "staff" | "admin";
 type AuthMode = "login" | "signup" | "reset";
 type BookingStatus = "confirmed" | "waitlist" | "cancelled" | "checked-in";
 type PaymentStatus = "paid" | "refunded";
 type Channel = "push" | "email" | "sms";
+type Role = "customer" | "staff" | "admin";
 
 type SessionType = {
   id: string;
@@ -42,6 +43,8 @@ type Customer = {
   membershipId: string;
   credits: number;
   paymentMethod: string;
+  role: Role;
+  stripeCustomerId?: string | null;
 };
 
 type MembershipPlan = {
@@ -97,6 +100,12 @@ type AuthResponse = {
   message?: string;
   state?: Partial<PersistedAppState> | null;
   error?: string;
+};
+
+type CheckoutResponse = {
+  id?: string;
+  message?: string;
+  url?: string;
 };
 
 const sessionTypes: SessionType[] = [
@@ -163,7 +172,8 @@ const initialCustomers: Customer[] = [
     phone: "+61 400 100 200",
     membershipId: "flow",
     credits: 2,
-    paymentMethod: "Visa token ending 4242"
+    paymentMethod: "Visa token ending 4242",
+    role: "admin"
   },
   {
     id: "c2",
@@ -172,7 +182,8 @@ const initialCustomers: Customer[] = [
     phone: "+61 400 300 500",
     membershipId: "drop-in",
     credits: 0,
-    paymentMethod: "Mastercard token ending 1881"
+    paymentMethod: "Mastercard token ending 1881",
+    role: "staff"
   },
   {
     id: "c3",
@@ -181,7 +192,8 @@ const initialCustomers: Customer[] = [
     phone: "+61 411 222 333",
     membershipId: "restore",
     credits: 5,
-    paymentMethod: "Apple Pay token ending 9001"
+    paymentMethod: "Apple Pay token ending 9001",
+    role: "customer"
   }
 ];
 
@@ -294,9 +306,26 @@ async function postJson<T>(url: string, payload: unknown): Promise<T> {
     method: "POST"
   });
 
-  const data = (await response.json()) as T;
+  const data = await readJsonResponse<T>(response);
   if (!response.ok) throw new Error((data as { message?: string }).message ?? "Request failed");
   return data;
+}
+
+async function getJson<T>(url: string): Promise<T> {
+  const response = await fetch(url);
+  const data = await readJsonResponse<T>(response);
+  if (!response.ok) throw new Error((data as { message?: string }).message ?? "Request failed");
+  return data;
+}
+
+async function readJsonResponse<T>(response: Response): Promise<T> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    const body = await response.text();
+    const fallback = body.trim().startsWith("<!doctype") ? "The local preview server is not serving API routes." : "Expected a JSON response.";
+    throw new Error(fallback);
+  }
+  return (await response.json()) as T;
 }
 
 export function App() {
@@ -332,6 +361,11 @@ export function App() {
 
   const currentCustomer = customers.find((customer) => customer.id === selectedCustomerId) ?? customers[0];
   const currentPlan = getPlan(currentCustomer.membershipId);
+  const canUseStaffTools = currentCustomer.role === "staff" || currentCustomer.role === "admin";
+  const canUseAdminTools = currentCustomer.role === "admin";
+  const navItems: AppView[] = ["home", "book", "locations", "passes", "me"];
+  if (canUseStaffTools) navItems.push("staff");
+  if (canUseAdminTools) navItems.push("admin");
 
   const visibleSessions = useMemo(
     () =>
@@ -360,6 +394,17 @@ export function App() {
     };
     window.localStorage.setItem("clave-app-state", JSON.stringify(nextState));
   }, [bookings, customers, isAuthenticated, notices, selectedCustomerId, transactions, view]);
+
+  useEffect(() => {
+    getJson<AuthResponse>("/api/auth")
+      .then((result) => {
+        if (!result.customer) return;
+        applyRemoteSession(result.customer, result.state);
+        setIsAuthenticated(true);
+        setSyncStatus("synced");
+      })
+      .catch(() => setSyncStatus("local"));
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated || !isOnline) return;
@@ -470,26 +515,17 @@ export function App() {
     }
 
     if (authMode === "login") {
-      let existing = customers.find((customer) => customer.email.toLowerCase() === authEmail.toLowerCase());
       try {
-        const result = await postJson<AuthResponse>("/api/auth", { email: authEmail, mode: "login" });
-        if (result.customer) {
-          applyRemoteSession(result.customer, result.state);
-          existing = result.customer;
-        }
-      } catch {
+        const result = await postJson<AuthResponse>("/api/auth", { email: authEmail, mode: "login", password: authPassword });
+        if (!result.customer) throw new Error(result.message ?? "Sign in failed");
+        applyRemoteSession(result.customer, result.state);
+        setIsAuthenticated(true);
+        setAuthMessage("");
+        pushNotice("push", "Welcome back", `${result.customer.name} signed in.`);
+      } catch (error) {
         setSyncStatus("error");
+        setAuthMessage(error instanceof Error ? error.message : "Sign in failed.");
       }
-
-      if (!existing) {
-        setAuthMessage("No account found for that email. Create one to continue.");
-        return;
-      }
-
-      applyRemoteSession(existing);
-      setIsAuthenticated(true);
-      setAuthMessage("");
-      pushNotice("push", "Welcome back", `${existing.name} signed in.`);
       return;
     }
 
@@ -505,47 +541,29 @@ export function App() {
       phone: authPhone.trim(),
       membershipId: "drop-in",
       credits: 0,
-      paymentMethod: "Payment token pending"
+      paymentMethod: "Payment token pending",
+      role: "customer"
     };
 
     try {
-      const result = await postJson<AuthResponse>("/api/auth", { customer: newCustomer, mode: "signup" });
+      const result = await postJson<AuthResponse>("/api/auth", { customer: newCustomer, mode: "signup", password: authPassword });
       applyRemoteSession(result.customer ?? newCustomer, result.state);
       setSyncStatus("synced");
-    } catch {
-      setCustomers((current) => [newCustomer, ...current]);
-      setSelectedCustomerId(newCustomer.id);
-      setProfileName(newCustomer.name);
-      setProfilePhone(newCustomer.phone);
+      setIsAuthenticated(true);
+      setAuthMessage("");
+      pushNotice("email", "Account created", `Welcome to Clave Bathhouse, ${newCustomer.name}.`);
+    } catch (error) {
       setSyncStatus("error");
+      setAuthMessage(error instanceof Error ? error.message : "Account creation failed.");
     }
-    setIsAuthenticated(true);
-    setAuthMessage("");
-    pushNotice("email", "Account created", `Welcome to Clave Bathhouse, ${newCustomer.name}.`);
   }
 
   async function handleSocialAuth(provider: "Apple" | "Google") {
-    let existing = customers.find((customer) => customer.email.toLowerCase() === authEmail.toLowerCase()) ?? customers[0];
-
-    try {
-      const result = await postJson<AuthResponse>("/api/auth", { email: existing.email, mode: "social", provider });
-      if (result.customer) {
-        applyRemoteSession(result.customer, result.state);
-        existing = result.customer;
-        setSyncStatus("synced");
-      }
-    } catch {
-      setSyncStatus("error");
-    }
-
-    applyRemoteSession(existing);
-    setIsAuthenticated(true);
-    setAuthMode("login");
-    setAuthMessage("");
-    pushNotice("push", `${provider} sign in`, `${existing.name} signed in with ${provider}.`);
+    setAuthMessage(`${provider} OAuth is ready to connect once provider credentials are added in Vercel.`);
   }
 
-  function handleSignOut() {
+  async function handleSignOut() {
+    await fetch("/api/auth", { method: "DELETE" }).catch(() => undefined);
     setIsAuthenticated(false);
     setAuthMode("login");
     setAuthPassword("");
@@ -568,7 +586,7 @@ export function App() {
     );
   }
 
-  function handleCheckout() {
+  async function handleCheckout() {
     if (selectedSessions.length === 0) {
       pushNotice("push", "Choose a time", "Select at least one bathhouse spot before checkout.");
       return;
@@ -611,6 +629,36 @@ export function App() {
           method: useCredit ? "Membership credit" : currentCustomer.paymentMethod,
           date: "2026-05-24"
         });
+      }
+    }
+
+    const paidItems = createdBookings
+      .filter((booking) => booking.paid > 0 && booking.status === "confirmed")
+      .map((booking) => {
+        const session = sessions.find((item) => item.id === booking.sessionId);
+        const type = getSessionType(session?.typeId ?? "thermal");
+        return {
+          amountCents: Math.round(booking.paid * 100),
+          name: type.name,
+          quantity: 1,
+          sessionId: booking.sessionId,
+          typeId: session?.typeId
+        };
+      });
+
+    if (paidItems.length > 0) {
+      try {
+        const checkout = await postJson<CheckoutResponse>("/api/checkout", { items: paidItems });
+        if (checkout.url) {
+          window.location.assign(checkout.url);
+          return;
+        }
+      } catch (error) {
+        pushNotice(
+          "sms",
+          "Stripe checkout pending",
+          error instanceof Error ? error.message : "Stripe is not configured yet, so this booking remains local."
+        );
       }
     }
 
@@ -788,9 +836,33 @@ export function App() {
                 sessions={sessions}
               />
                 )}
+
+                {view === "staff" && canUseStaffTools && <StaffWorkspace bookings={bookings} checkIn={checkIn} sessions={sessions} />}
+
+                {view === "admin" && canUseAdminTools && (
+              <AdminWorkspace
+                bookings={bookings}
+                cancelBooking={cancelBooking}
+                createSession={createSession}
+                customers={customers}
+                newCapacity={newCapacity}
+                newDate={newDate}
+                newTime={newTime}
+                newTypeId={newTypeId}
+                occupancy={occupancy}
+                refund={refund}
+                revenue={revenue}
+                sessions={sessions}
+                setNewCapacity={setNewCapacity}
+                setNewDate={setNewDate}
+                setNewTime={setNewTime}
+                setNewTypeId={setNewTypeId}
+                transactions={transactions}
+              />
+                )}
               </section>
               <nav className="bottom-nav" aria-label="Primary mobile navigation">
-                {(["home", "book", "locations", "passes", "me"] as AppView[]).map((item) => (
+                {navItems.map((item) => (
                   <button className={view === item ? "active" : ""} key={item} onClick={() => setView(item)}>
                     <NavIcon view={item} />
                     <span>{item}</span>

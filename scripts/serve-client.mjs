@@ -20,6 +20,16 @@ const mime = {
 
 http
   .createServer((req, res) => {
+    if ((req.url ?? "").startsWith("/api/")) {
+      const body = JSON.stringify({
+        error: "api_unavailable",
+        message: "Local static preview does not run Vercel API routes. Deploy to Vercel or run an API-aware dev server."
+      });
+      res.writeHead(503, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(body);
+      return;
+    }
+
     const urlPath = req.url === "/" ? "/index.html" : req.url ?? "/index.html";
     const filePath = normalize(join(root, urlPath));
     const safePath = filePath.startsWith(root) ? filePath : join(root, "index.html");
@@ -30,5 +40,5 @@ http
     createReadStream(target).pipe(res);
   })
   .listen(port, () => {
-    console.log(`Gravity client available at http://localhost:${port}`);
+    console.log(`Clave Bathhouse client available at http://localhost:${port}`);
   });

@@ -1,5 +1,5 @@
 {
-  "name": "gravity-well-web",
+  "name": "clave-bathhouse",
   "private": true,
   "version": "0.1.0",
   "workspaces": [
@@ -7,8 +7,8 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "build:vercel": "npm run build --workspace @gravity/client && node scripts/copy-client-dist.mjs",
-    "dev": "npm run dev --workspace @gravity/client",
+    "build:vercel": "npm run build --workspace @clave/client && node scripts/copy-client-dist.mjs",
+    "dev": "npm run dev --workspace @clave/client",
     "dev:server": "npm run dev --workspace @gravity/signal-server",
     "test": "npm run test --workspaces --if-present"
   }
