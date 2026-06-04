@@ -3,9 +3,9 @@ import { requireSession } from "./_security.js";
 
 export default async function handler(request, response) {
   try {
-    await ensureSchema();
     const session = requireSession(request, response);
     if (!session) return;
+    await ensureSchema();
 
     if (request.method === "GET") {
       const customerId = session.role === "admin" ? String(request.query.customerId ?? session.customerId) : session.customerId;

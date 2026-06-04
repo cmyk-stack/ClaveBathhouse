@@ -15,9 +15,9 @@ export default async function handler(request, response) {
   }
 
   try {
-    await ensureSchema();
     const session = requireSession(request, response);
     if (!session) return;
+    await ensureSchema();
 
     const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
     if (!stripeSecretKey) {

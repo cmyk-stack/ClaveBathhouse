@@ -19,12 +19,11 @@ export default async function handler(request, response) {
   }
 
   try {
-    await ensureSchema();
-
     if (request.method === "GET") {
       const session = getSession(request);
       if (!session) return sendJson(response, 200, { customer: null, state: null });
 
+      await ensureSchema();
       const customer = await findCustomerById(session.customerId);
       if (!customer) {
         clearSessionCookie(response);
@@ -42,6 +41,7 @@ export default async function handler(request, response) {
       return sendJson(response, 200, { ok: true });
     }
 
+    await ensureSchema();
     const { mode, customer, email } = request.body ?? {};
     if (mode === "login") {
       const existing = await findCustomerWithAuthByEmail(email);

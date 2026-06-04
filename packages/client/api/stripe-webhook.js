@@ -20,8 +20,6 @@ export default async function handler(request, response) {
   }
 
   try {
-    await ensureSchema();
-
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
     const rawBody = typeof request.body === "string" ? request.body : JSON.stringify(request.body ?? {});
     if (webhookSecret && !verifyStripeSignature(rawBody, request.headers["stripe-signature"], webhookSecret)) {
@@ -30,6 +28,7 @@ export default async function handler(request, response) {
 
     const event = typeof request.body === "string" ? JSON.parse(request.body) : request.body;
     if (event?.type === "checkout.session.completed") {
+      await ensureSchema();
       console.log("Stripe checkout completed", event.data?.object?.id);
     }
 

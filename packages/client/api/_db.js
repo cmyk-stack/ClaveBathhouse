@@ -11,7 +11,20 @@ const seedCustomer = {
   paymentMethod: "Visa token ending 4242"
 };
 
+export function isDatabaseConfigured() {
+  return Boolean(process.env.POSTGRES_URL);
+}
+
+export function assertDatabaseConfigured() {
+  if (!isDatabaseConfigured()) {
+    const error = new Error("Neon database is not configured. Set POSTGRES_URL in Vercel.");
+    error.code = "database_not_configured";
+    throw error;
+  }
+}
+
 export async function ensureSchema() {
+  assertDatabaseConfigured();
   const seedPasswordHash = await hashPassword("clave-demo-password");
 
   await sql`
@@ -226,6 +239,14 @@ export function sendJson(response, statusCode, body) {
 
 export function sendError(response, error) {
   console.error(error);
+  if (error?.code === "database_not_configured") {
+    response.status(503).json({
+      error: "database_not_configured",
+      message: "Neon database is not configured. Set POSTGRES_URL in Vercel."
+    });
+    return;
+  }
+
   response.status(500).json({
     error: "database_error",
     message: "The database could not complete the request."
