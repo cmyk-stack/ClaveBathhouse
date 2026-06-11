@@ -2,18 +2,27 @@ import crypto from "node:crypto";
 import { sendError, sendJson } from "../_db.js";
 
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
-const STATE_COOKIE = "clave_google_oauth_state";
+
+function getAuthSecret() {
+  return process.env.AUTH_SECRET || "local-dev-change-me";
+}
+
+function createSignedState() {
+  const payload = Buffer.from(
+    JSON.stringify({
+      exp: Math.floor(Date.now() / 1000) + 600,
+      nonce: crypto.randomBytes(24).toString("base64url")
+    })
+  ).toString("base64url");
+  const signature = crypto.createHmac("sha256", getAuthSecret()).update(payload).digest("base64url");
+  return `${payload}.${signature}`;
+}
 
 function getRedirectUri(request) {
   if (process.env.GOOGLE_REDIRECT_URI) return process.env.GOOGLE_REDIRECT_URI;
   const host = request.headers["x-forwarded-host"] || request.headers.host;
   const protocol = request.headers["x-forwarded-proto"] || "https";
   return `${protocol}://${host}/api/auth/google/callback`;
-}
-
-function setStateCookie(response, state) {
-  const secure = process.env.VERCEL ? "; Secure" : "";
-  response.setHeader("Set-Cookie", `${STATE_COOKIE}=${state}; Path=/; HttpOnly; SameSite=Lax${secure}; Max-Age=600`);
 }
 
 export default async function handler(request, response) {
@@ -31,8 +40,7 @@ export default async function handler(request, response) {
       });
     }
 
-    const state = crypto.randomBytes(24).toString("base64url");
-    setStateCookie(response, state);
+    const state = createSignedState();
 
     const params = new URLSearchParams({
       access_type: "offline",

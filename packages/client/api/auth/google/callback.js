@@ -1,23 +1,30 @@
+import crypto from "node:crypto";
 import { ensureSchema, getStoredState, sendError, sendJson, upsertGoogleCustomer } from "../../_db.js";
 import { setSessionCookie } from "../../_security.js";
 
-const STATE_COOKIE = "clave_google_oauth_state";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo";
 
-function getCookie(request, name) {
-  return (request.headers.cookie || "")
-    .split(";")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(`${name}=`))
-    ?.slice(name.length + 1);
+function getAuthSecret() {
+  return process.env.AUTH_SECRET || "local-dev-change-me";
 }
 
-function clearStateCookie(response) {
-  const secure = process.env.VERCEL ? "; Secure" : "";
-  const cookie = `${STATE_COOKIE}=; Path=/; HttpOnly; SameSite=Lax${secure}; Max-Age=0`;
-  const existing = response.getHeader("Set-Cookie");
-  response.setHeader("Set-Cookie", existing ? [existing, cookie].flat() : cookie);
+function verifySignedState(state) {
+  if (!state || typeof state !== "string") return false;
+  const [payload, signature] = state.split(".");
+  if (!payload || !signature) return false;
+
+  const expected = crypto.createHmac("sha256", getAuthSecret()).update(payload).digest("base64url");
+  const actualBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+  if (actualBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(actualBuffer, expectedBuffer)) return false;
+
+  try {
+    const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    return Boolean(parsed.exp && parsed.exp >= Math.floor(Date.now() / 1000));
+  } catch {
+    return false;
+  }
 }
 
 function getRedirectUri(request) {
@@ -47,7 +54,7 @@ export default async function handler(request, response) {
       return;
     }
 
-    if (!code || !state || getCookie(request, STATE_COOKIE) !== state) {
+    if (!code || !verifySignedState(String(state))) {
       return sendJson(response, 400, { error: "invalid_oauth_state", message: "Google sign in could not be verified." });
     }
 
@@ -102,7 +109,6 @@ export default async function handler(request, response) {
       email: customer.email,
       role: customer.role
     });
-    clearStateCookie(response);
 
     response.writeHead(302, { Location: `${getAppUrl(request)}/?auth=google_success` });
     response.end();
