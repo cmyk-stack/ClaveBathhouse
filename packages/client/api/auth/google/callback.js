@@ -103,6 +103,12 @@ export default async function handler(request, response) {
       name: String(profile.name ?? ""),
       sub: String(profile.sub)
     });
+    if (!customer) {
+      return sendJson(response, 500, {
+        error: "google_customer_error",
+        message: "Google sign in succeeded, but the Clave account could not be created."
+      });
+    }
 
     setSessionCookie(response, {
       customerId: customer.id,

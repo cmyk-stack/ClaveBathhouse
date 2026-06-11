@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { sql } from "@vercel/postgres";
 import { hashPassword } from "./_security.js";
 
@@ -419,38 +420,40 @@ export async function upsertCustomer(customer, passwordHash = null) {
 }
 
 export async function upsertGoogleCustomer(profile) {
-  const existing = (await findCustomerByGoogleSub(profile.sub)) ?? (await findCustomerByEmail(profile.email));
-  const customer = {
-    id: existing?.id ?? `g${Date.now()}`,
-    name: profile.name || profile.email.split("@")[0],
-    email: profile.email,
-    phone: existing?.phone ?? "",
-    membershipId: existing?.membershipId ?? "drop-in",
-    credits: existing?.credits ?? 0,
-    paymentMethod: existing?.paymentMethod ?? "Payment token pending",
-    role: existing?.role ?? "customer"
-  };
+  const name = profile.name || profile.email.split("@")[0];
+  const existingBySub = await findCustomerByGoogleSub(profile.sub);
+  if (existingBySub) {
+    const result = await sql`
+      UPDATE clave_customers
+      SET
+        email = ${profile.email},
+        name = COALESCE(NULLIF(${name}, ''), name)
+      WHERE id = ${existingBySub.id}
+      RETURNING id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id
+    `;
+    return result.rows[0] ? customerFromRow(result.rows[0]) : null;
+  }
 
-  await sql`
+  const existingByEmail = await findCustomerByEmail(profile.email);
+  if (existingByEmail) {
+    const result = await sql`
+      UPDATE clave_customers
+      SET
+        google_sub = ${profile.sub},
+        name = COALESCE(NULLIF(${name}, ''), name)
+      WHERE id = ${existingByEmail.id}
+      RETURNING id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id
+    `;
+    return result.rows[0] ? customerFromRow(result.rows[0]) : null;
+  }
+
+  const result = await sql`
     INSERT INTO clave_customers (id, name, email, phone, membership_id, credits, payment_method, role, google_sub)
-    VALUES (
-      ${customer.id},
-      ${customer.name},
-      ${customer.email},
-      ${customer.phone},
-      ${customer.membershipId},
-      ${customer.credits},
-      ${customer.paymentMethod},
-      ${customer.role},
-      ${profile.sub}
-    )
-    ON CONFLICT (email)
-    DO UPDATE SET
-      name = COALESCE(NULLIF(EXCLUDED.name, ''), clave_customers.name),
-      google_sub = EXCLUDED.google_sub
+    VALUES (${`g-${crypto.randomUUID()}`}, ${name}, ${profile.email}, '', 'drop-in', 0, 'Payment token pending', 'customer', ${profile.sub})
+    RETURNING id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id
   `;
 
-  return findCustomerByEmail(customer.email);
+  return result.rows[0] ? customerFromRow(result.rows[0]) : null;
 }
 
 export async function savePasswordResetToken(email, token, expiresAt) {
