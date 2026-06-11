@@ -121,6 +121,22 @@ type BookingsResponse = {
   message?: string;
 };
 
+type ApiErrorBody = {
+  error?: string;
+  message?: string;
+};
+
+class ApiError extends Error {
+  body: ApiErrorBody;
+  status: number;
+
+  constructor(message: string, status: number, body: ApiErrorBody = {}) {
+    super(message);
+    this.body = body;
+    this.status = status;
+  }
+}
+
 const sessionTypes: SessionType[] = [
   {
     id: "thermal",
@@ -320,14 +336,20 @@ async function postJson<T>(url: string, payload: unknown): Promise<T> {
   });
 
   const data = await readJsonResponse<T>(response);
-  if (!response.ok) throw new Error((data as { message?: string }).message ?? "Request failed");
+  if (!response.ok) {
+    const body = data as ApiErrorBody;
+    throw new ApiError(body.message ?? "Request failed", response.status, body);
+  }
   return data;
 }
 
 async function getJson<T>(url: string): Promise<T> {
   const response = await fetch(url);
   const data = await readJsonResponse<T>(response);
-  if (!response.ok) throw new Error((data as { message?: string }).message ?? "Request failed");
+  if (!response.ok) {
+    const body = data as ApiErrorBody;
+    throw new ApiError(body.message ?? "Request failed", response.status, body);
+  }
   return data;
 }
 
@@ -341,15 +363,23 @@ async function readJsonResponse<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
 
+function isStaticPreviewError(error: unknown) {
+  return error instanceof ApiError && error.body.error === "api_unavailable";
+}
+
+function messageFromError(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 export function App() {
   const persistedState = useMemo(() => readPersistedState(), []);
   const [view, setView] = useState<AppView>(persistedState.view ?? "home");
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [sessions, setSessions] = useState<Session[]>(initialSessions);
-  const [bookings, setBookings] = useState<Booking[]>(persistedState.bookings ?? initialBookings);
-  const [customers, setCustomers] = useState<Customer[]>(persistedState.customers ?? initialCustomers);
-  const [transactions, setTransactions] = useState<Transaction[]>(persistedState.transactions ?? initialTransactions);
+  const [bookings, setBookings] = useState<Booking[]>(initialBookings);
+  const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
+  const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
   const [notices, setNotices] = useState<Notice[]>(persistedState.notices ?? initialNotices);
   const [selectedCustomerId, setSelectedCustomerId] = useState("c1");
   const [selectedDate, setSelectedDate] = useState("2026-05-24");
@@ -367,6 +397,9 @@ export function App() {
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const [pwaMessage, setPwaMessage] = useState("Offline-ready after first load.");
   const [syncStatus, setSyncStatus] = useState<"local" | "syncing" | "synced" | "error">("local");
+  const [operationalMessage, setOperationalMessage] = useState("");
+  const [isLoadingOperations, setIsLoadingOperations] = useState(false);
+  const [busyAction, setBusyAction] = useState<"booking" | "cancel" | "check-in" | "profile" | "session" | "">("");
   const [newCapacity, setNewCapacity] = useState(8);
   const [newTypeId, setNewTypeId] = useState("thermal");
   const [newDate, setNewDate] = useState("2026-05-27");
@@ -522,21 +555,29 @@ export function App() {
       return [customer, ...withoutCustomer];
     });
 
-    if (remoteState?.bookings) setBookings(remoteState.bookings);
-    if (remoteState?.customers) setCustomers(remoteState.customers);
     if (remoteState?.notices) setNotices(remoteState.notices);
     if (remoteState?.transactions) setTransactions(remoteState.transactions);
     if (remoteState?.view) setView(remoteState.view);
   }
 
   async function loadOperationalData() {
+    setIsLoadingOperations(true);
+    setOperationalMessage("");
     try {
       const [sessionsResult, bookingsResult] = await Promise.all([getJson<SessionsResponse>("/api/sessions"), getJson<BookingsResponse>("/api/bookings")]);
       if (sessionsResult.sessions) setSessions(sessionsResult.sessions);
       if (bookingsResult.bookings) setBookings(bookingsResult.bookings);
       setSyncStatus("synced");
-    } catch {
-      setSyncStatus("local");
+    } catch (error) {
+      if (isStaticPreviewError(error)) {
+        setSyncStatus("local");
+        setOperationalMessage("Local preview is using sample booking data. Deployed Vercel uses Neon as the source of truth.");
+      } else {
+        setSyncStatus("error");
+        setOperationalMessage(messageFromError(error, "Bookings could not be loaded from Neon."));
+      }
+    } finally {
+      setIsLoadingOperations(false);
     }
   }
 
@@ -694,6 +735,8 @@ export function App() {
     }
 
     if (isAuthenticated && isOnline) {
+      setBusyAction("booking");
+      setOperationalMessage("");
       try {
         let latestBookings: Booking[] | undefined;
         for (const booking of createdBookings) {
@@ -708,11 +751,18 @@ export function App() {
         pushNotice("email", "Booking confirmation", "Your Clave Bathhouse booking was recorded in Neon.");
         return;
       } catch (error) {
+        if (!isStaticPreviewError(error)) {
+          setOperationalMessage(messageFromError(error, "Booking could not be saved in Neon."));
+          pushNotice("sms", "Booking not saved", messageFromError(error, "Booking could not be saved in Neon."));
+          return;
+        }
         pushNotice(
           "sms",
           "Server booking fallback",
-          error instanceof Error ? error.message : "Booking API is unavailable, so this booking remains local."
+          messageFromError(error, "Booking API is unavailable, so this booking remains local.")
         );
+      } finally {
+        setBusyAction("");
       }
     }
 
@@ -737,23 +787,41 @@ export function App() {
       return;
     }
 
+    setBusyAction("cancel");
+    setOperationalMessage("");
     try {
       const result = await postJson<BookingsResponse>("/api/bookings", { action: "cancel", bookingId });
       if (result.bookings) setBookings(result.bookings);
       else setBookings((current) => allocateWaitlist(target.sessionId, current.map((booking) => (booking.id === bookingId ? { ...booking, status: "cancelled" } : booking))));
-    } catch {
+    } catch (error) {
+      if (!isStaticPreviewError(error)) {
+        setOperationalMessage(messageFromError(error, "Booking could not be cancelled in Neon."));
+        pushNotice("sms", "Cancellation not saved", messageFromError(error, "Booking could not be cancelled in Neon."));
+        return;
+      }
       setBookings((current) => allocateWaitlist(target.sessionId, current.map((booking) => (booking.id === bookingId ? { ...booking, status: "cancelled" } : booking))));
+    } finally {
+      setBusyAction("");
     }
     pushNotice("email", "Booking cancelled", `${target.customerName}'s booking was cancelled and policy rules were applied.`);
   }
 
   async function checkIn(bookingId: string) {
+    setBusyAction("check-in");
+    setOperationalMessage("");
     try {
       const result = await postJson<BookingsResponse>("/api/bookings", { action: "check-in", bookingId });
       if (result.bookings) setBookings(result.bookings);
       else setBookings((current) => current.map((booking) => (booking.id === bookingId ? { ...booking, status: "checked-in" } : booking)));
-    } catch {
+    } catch (error) {
+      if (!isStaticPreviewError(error)) {
+        setOperationalMessage(messageFromError(error, "Check-in could not be saved in Neon."));
+        pushNotice("sms", "Check-in not saved", messageFromError(error, "Check-in could not be saved in Neon."));
+        return;
+      }
       setBookings((current) => current.map((booking) => (booking.id === bookingId ? { ...booking, status: "checked-in" } : booking)));
+    } finally {
+      setBusyAction("");
     }
     pushNotice("push", "Check-in complete", "Attendance has been updated for the bathhouse.");
   }
@@ -776,6 +844,8 @@ export function App() {
 
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setBusyAction("profile");
+    setOperationalMessage("");
     try {
       const result = await postJson<ProfileResponse>("/api/profile", {
         name: profileName,
@@ -787,9 +857,17 @@ export function App() {
       setSyncStatus("synced");
       pushNotice("push", "Profile saved", "Personal details were updated in Neon.");
     } catch (error) {
+      if (!isStaticPreviewError(error)) {
+        setSyncStatus("error");
+        setOperationalMessage(messageFromError(error, "Profile could not be saved in Neon."));
+        pushNotice("sms", "Profile not saved", messageFromError(error, "Profile could not be saved in Neon."));
+        return;
+      }
       setCustomers((current) => current.map((customer) => (customer.id === currentCustomer.id ? { ...customer, name: profileName, phone: profilePhone } : customer)));
       setSyncStatus("error");
-      pushNotice("sms", "Profile saved locally", error instanceof Error ? error.message : "The profile API is unavailable.");
+      pushNotice("sms", "Profile saved locally", messageFromError(error, "The profile API is unavailable."));
+    } finally {
+      setBusyAction("");
     }
   }
 
@@ -803,11 +881,20 @@ export function App() {
       capacity: newCapacity,
       practitioner: "Clave Team"
     };
+    setBusyAction("session");
+    setOperationalMessage("");
     try {
       const result = await postJson<SessionsResponse>("/api/sessions", { session });
       setSessions((current) => [...current, result.session ?? session].sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`)));
-    } catch {
+    } catch (error) {
+      if (!isStaticPreviewError(error)) {
+        setOperationalMessage(messageFromError(error, "Session could not be created in Neon."));
+        pushNotice("sms", "Schedule not saved", messageFromError(error, "Session could not be created in Neon."));
+        return;
+      }
       setSessions((current) => [...current, session].sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`)));
+    } finally {
+      setBusyAction("");
     }
     pushNotice("email", "Schedule updated", `${getSessionType(newTypeId).name} was added to the live timetable.`);
   }
@@ -861,6 +948,16 @@ export function App() {
           ) : (
             <>
               <section className="app-scroll">
+                {(isLoadingOperations || busyAction || operationalMessage) && (
+                  <div className={`operation-banner ${syncStatus === "error" ? "error" : ""}`}>
+                    {isLoadingOperations
+                      ? "Loading live booking data..."
+                      : busyAction
+                        ? "Saving to Neon..."
+                        : operationalMessage}
+                  </div>
+                )}
+
                 {view === "home" && (
               <HomeWorkspace
                 bookings={customerBookings}

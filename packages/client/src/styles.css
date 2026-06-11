@@ -250,6 +250,22 @@ button.quiet {
   padding: 10px 12px;
 }
 
+.operation-banner {
+  border-radius: 14px;
+  background: #e6dccb;
+  color: #4f463d;
+  font-size: 0.82rem;
+  font-weight: 750;
+  line-height: 1.35;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+}
+
+.operation-banner.error {
+  background: #ecd3c8;
+  color: #7d3e27;
+}
+
 .auth-links button {
   background: rgba(38, 32, 25, 0.07);
   color: #2d271f;
