@@ -127,6 +127,13 @@ type CustomersResponse = {
   customers?: Customer[];
 };
 
+type HealthResponse = {
+  checks?: Record<string, boolean>;
+  missing?: string[];
+  ok?: boolean;
+  timestamp?: string;
+};
+
 type ApiErrorBody = {
   error?: string;
   message?: string;
@@ -407,6 +414,7 @@ export function App() {
   const [operationalMessage, setOperationalMessage] = useState("");
   const [isLoadingOperations, setIsLoadingOperations] = useState(false);
   const [busyAction, setBusyAction] = useState<"booking" | "cancel" | "check-in" | "profile" | "session" | "">("");
+  const [healthStatus, setHealthStatus] = useState<HealthResponse | null>(null);
   const [newCapacity, setNewCapacity] = useState(8);
   const [newTypeId, setNewTypeId] = useState("thermal");
   const [newDate, setNewDate] = useState("2026-05-27");
@@ -572,14 +580,16 @@ export function App() {
     setIsLoadingOperations(true);
     setOperationalMessage("");
     try {
-      const [sessionsResult, bookingsResult, customersResult] = await Promise.all([
+      const [sessionsResult, bookingsResult, customersResult, healthResult] = await Promise.all([
         getJson<SessionsResponse>("/api/sessions"),
         getJson<BookingsResponse>("/api/bookings"),
-        customer.role === "admin" ? getJson<CustomersResponse>("/api/customers") : Promise.resolve<CustomersResponse>({})
+        customer.role === "admin" ? getJson<CustomersResponse>("/api/customers") : Promise.resolve<CustomersResponse>({}),
+        customer.role === "admin" ? getJson<HealthResponse>("/api/health") : Promise.resolve<HealthResponse | null>(null)
       ]);
       if (sessionsResult.sessions) setSessions(sessionsResult.sessions);
       if (bookingsResult.bookings) setBookings(bookingsResult.bookings);
       if (customersResult.customers) setCustomers(customersResult.customers);
+      if (healthResult) setHealthStatus(healthResult);
       setSyncStatus("synced");
     } catch (error) {
       if (isStaticPreviewError(error)) {
@@ -1030,13 +1040,12 @@ export function App() {
           <p className="eyebrow">Clave Bathhouse</p>
           <h1>Relax, Refresh, Rejuvenate</h1>
           <p>
-            A mobile-first booking app inspired by Clave's website: calm editorial
-            type, warm neutrals, spa photography, and a simple path from browse to
-            confirmed visit.
+            Book bathhouse access, manage passes, and keep staff check-ins moving
+            from one calm mobile workspace.
           </p>
         </div>
 
-        <div className="phone-shell" aria-label="Clave Bathhouse mobile app preview">
+        <div className="phone-shell" aria-label="Clave Bathhouse mobile app">
           <header className="app-hero">
             <div className="hero-image" aria-hidden="true">
               <div className="hero-mist" />
@@ -1149,6 +1158,7 @@ export function App() {
                 currentCustomerId={currentCustomer.id}
                 customers={customers}
                 deleteSession={deleteSession}
+                healthStatus={healthStatus}
                 newCapacity={newCapacity}
                 newDate={newDate}
                 newPractitioner={newPractitioner}
@@ -1767,6 +1777,7 @@ type AdminWorkspaceProps = {
   currentCustomerId: string;
   customers: Customer[];
   deleteSession: (sessionId: string) => void;
+  healthStatus: HealthResponse | null;
   newCapacity: number;
   newDate: string;
   newPractitioner: string;
@@ -1794,6 +1805,7 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
     currentCustomerId,
     customers,
     deleteSession,
+    healthStatus,
     newCapacity,
     newDate,
     newPractitioner,
@@ -1833,6 +1845,31 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
           <span>Members</span>
           <strong>{customers.filter((customer) => customer.membershipId !== "drop-in").length}</strong>
         </article>
+      </section>
+
+      <section className="surface">
+        <div className="section-head">
+          <div>
+            <p className="eyebrow">Production</p>
+            <h3>Launch health</h3>
+          </div>
+          <span className={`status ${healthStatus?.ok ? "paid" : "waitlist"}`}>{healthStatus?.ok ? "Ready" : "Needs attention"}</span>
+        </div>
+        <div className="health-grid">
+          {[
+            ["Database", healthStatus?.checks?.database && healthStatus?.checks?.databaseReachable],
+            ["Auth secret", healthStatus?.checks?.authSecret],
+            ["Email", healthStatus?.checks?.email],
+            ["Google", healthStatus?.checks?.google],
+            ["App URL", healthStatus?.checks?.publicAppUrl]
+          ].map(([label, ok]) => (
+            <div className="health-row" key={String(label)}>
+              <span>{label}</span>
+              <strong className={`status ${ok ? "paid" : "waitlist"}`}>{ok ? "OK" : "Missing"}</strong>
+            </div>
+          ))}
+        </div>
+        {healthStatus?.missing?.length ? <p className="empty-state">Missing: {healthStatus.missing.join(", ")}</p> : null}
       </section>
 
       <section className="surface">

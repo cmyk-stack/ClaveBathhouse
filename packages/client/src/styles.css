@@ -773,6 +773,28 @@ small,
   font-weight: 400;
 }
 
+.health-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.health-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(38, 32, 25, 0.11);
+  border-radius: 14px;
+  background: rgba(255, 252, 246, 0.72);
+}
+
+.health-row span {
+  color: #736858;
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
 .customer-list {
   grid-template-columns: 1fr;
 }

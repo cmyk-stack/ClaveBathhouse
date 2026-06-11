@@ -5,7 +5,7 @@ Clave Bathhouse is a mobile-first booking app for sauna, plunge, steam, recovery
 ## Stack
 
 - `packages/client`: React + Vite PWA, Vercel API routes, and Stripe checkout integration points
-- `packages/shared`: legacy shared simulation package retained until the app is fully separated from the earlier prototype
+- `packages/shared`: shared domain utilities retained while the production client is separated from older workspace packages
 - `packages/signal-server`: legacy signaling package retained until removed from the workspace
 - Backend: Vercel Serverless Functions with Neon Postgres storage
 - Payments: Stripe Checkout and Stripe webhook scaffolding
@@ -46,5 +46,6 @@ PUBLIC_APP_URL=https://clavebathhouse.com
 - Role-aware access for customers, staff, and admins
 - Server-owned persistence instead of trusting browser-only state
 - Production-safe first-admin setup through environment variables
+- Admin-visible `/api/health` checks for database, auth, email, Google, and app URL configuration
 - Stripe-hosted payment collection before booking confirmation
 - PWA install and offline app-shell caching

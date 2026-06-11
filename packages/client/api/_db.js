@@ -66,6 +66,12 @@ export function assertDatabaseConfigured() {
   }
 }
 
+export async function checkDatabaseConnection() {
+  assertDatabaseConfigured();
+  await sql`SELECT 1`;
+  return true;
+}
+
 export async function ensureSchema() {
   assertDatabaseConfigured();
   const seedPasswordHash = await hashPassword("clave-demo-password");
