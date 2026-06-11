@@ -558,7 +558,7 @@ export function App() {
     }
   }
 
-  async function handleSocialAuth(provider: "Apple" | "Google") {
+  async function handleSocialAuth(provider: "Google") {
     setAuthMessage(`${provider} OAuth is ready to connect once provider credentials are added in Vercel.`);
   }
 
@@ -899,7 +899,7 @@ function AuthWorkspace({
   authPassword: string;
   authPhone: string;
   handleAuth: (event: FormEvent<HTMLFormElement>) => void;
-  handleSocialAuth: (provider: "Apple" | "Google") => void;
+  handleSocialAuth: (provider: "Google") => void;
   setAuthEmail: (value: string) => void;
   setAuthMode: (mode: AuthMode) => void;
   setAuthName: (value: string) => void;
@@ -957,35 +957,17 @@ function AuthWorkspace({
           <button>{action}</button>
         </form>
 
-        <div className="social-auth">
-          <button onClick={() => handleSocialAuth("Apple")} type="button">
-            <AppleIcon />
-            <span>Apple</span>
-          </button>
-          <button onClick={() => handleSocialAuth("Google")} type="button">
-            <GoogleIcon />
-            <span>Google</span>
-          </button>
-        </div>
-
         <div className="auth-links">
           {authMode !== "login" && <button onClick={() => setAuthMode("login")}>Back to login</button>}
           {authMode !== "signup" && <button onClick={() => setAuthMode("signup")}>Create account</button>}
           {authMode !== "reset" && <button onClick={() => setAuthMode("reset")}>Forgot password</button>}
+          <button className="google-auth-link" onClick={() => handleSocialAuth("Google")} type="button">
+            <GoogleIcon />
+            <span>Google</span>
+          </button>
         </div>
       </div>
     </section>
-  );
-}
-
-function AppleIcon() {
-  return (
-    <svg aria-hidden="true" className="brand-icon" viewBox="0 0 24 24">
-      <path
-        d="M16.7 12.4c0-2.1 1.7-3.1 1.8-3.2-1-1.4-2.5-1.6-3-1.6-1.3-.1-2.5.8-3.2.8-.7 0-1.7-.8-2.8-.8-1.4 0-2.8.8-3.5 2.1-1.5 2.5-.4 6.3 1.1 8.3.7 1 1.6 2.2 2.7 2.1 1.1 0 1.5-.7 2.8-.7s1.7.7 2.8.7c1.2 0 1.9-1 2.6-2 .8-1.2 1.1-2.3 1.2-2.3 0-.1-2.5-1-2.5-3.4ZM14.7 6.2c.6-.7 1-1.7.9-2.7-.9 0-1.9.6-2.5 1.3-.6.6-1 1.6-.9 2.6.9.1 1.9-.5 2.5-1.2Z"
-        fill="currentColor"
-      />
-    </svg>
   );
 }
 

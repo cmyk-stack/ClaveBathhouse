@@ -250,19 +250,12 @@ button.quiet {
   padding: 10px 12px;
 }
 
-.social-auth {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.social-auth button,
 .auth-links button {
   background: rgba(38, 32, 25, 0.07);
   color: #2d271f;
 }
 
-.social-auth button {
+.google-auth-link {
   display: flex;
   gap: 8px;
   align-items: center;
@@ -276,15 +269,19 @@ button.quiet {
 }
 
 .auth-links {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+  width: 100%;
 }
 
 .auth-links button {
+  width: 100%;
   min-height: 34px;
-  padding: 0.45rem 0.72rem;
-  font-size: 0.78rem;
+  min-width: 0;
+  padding: 0.45rem 0.45rem;
+  font-size: 0.74rem;
+  white-space: nowrap;
 }
 
 .bottom-nav {
