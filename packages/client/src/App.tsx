@@ -343,13 +343,13 @@ export function App() {
   const persistedState = useMemo(() => readPersistedState(), []);
   const [view, setView] = useState<AppView>(persistedState.view ?? "home");
   const [authMode, setAuthMode] = useState<AuthMode>("login");
-  const [isAuthenticated, setIsAuthenticated] = useState(persistedState.isAuthenticated ?? false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [sessions, setSessions] = useState<Session[]>(initialSessions);
   const [bookings, setBookings] = useState<Booking[]>(persistedState.bookings ?? initialBookings);
   const [customers, setCustomers] = useState<Customer[]>(persistedState.customers ?? initialCustomers);
   const [transactions, setTransactions] = useState<Transaction[]>(persistedState.transactions ?? initialTransactions);
   const [notices, setNotices] = useState<Notice[]>(persistedState.notices ?? initialNotices);
-  const [selectedCustomerId, setSelectedCustomerId] = useState(persistedState.selectedCustomerId ?? "c1");
+  const [selectedCustomerId, setSelectedCustomerId] = useState("c1");
   const [selectedDate, setSelectedDate] = useState("2026-05-24");
   const [selectedType, setSelectedType] = useState("all");
   const [selectedSessions, setSelectedSessions] = useState<string[]>(["s2"]);
@@ -435,6 +435,7 @@ export function App() {
     const syncTimer = window.setTimeout(() => {
       const customer = customers.find((item) => item.id === selectedCustomerId);
       if (!customer) return;
+      if (customer.id !== selectedCustomerId) return;
 
       const state: PersistedAppState = {
         bookings,

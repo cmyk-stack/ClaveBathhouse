@@ -231,6 +231,17 @@ export async function findCustomerByEmail(email) {
   return result.rows[0] ? customerFromRow(result.rows[0]) : null;
 }
 
+export async function findCustomerByGoogleSub(googleSub) {
+  const result = await sql`
+    SELECT id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id
+    FROM clave_customers
+    WHERE google_sub = ${googleSub}
+    LIMIT 1
+  `;
+
+  return result.rows[0] ? customerFromRow(result.rows[0]) : null;
+}
+
 export async function findCustomerWithAuthByEmail(email) {
   const result = await sql`
     SELECT id, name, email, phone, membership_id, credits, payment_method, password_hash, role, stripe_customer_id
@@ -282,7 +293,7 @@ export async function upsertCustomer(customer, passwordHash = null) {
 }
 
 export async function upsertGoogleCustomer(profile) {
-  const existing = await findCustomerByEmail(profile.email);
+  const existing = (await findCustomerByGoogleSub(profile.sub)) ?? (await findCustomerByEmail(profile.email));
   const customer = {
     id: existing?.id ?? `g${Date.now()}`,
     name: profile.name || profile.email.split("@")[0],
