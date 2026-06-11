@@ -108,6 +108,17 @@ type CheckoutResponse = {
   url?: string;
 };
 
+type SessionsResponse = {
+  session?: Session;
+  sessions?: Session[];
+};
+
+type BookingsResponse = {
+  booking?: Booking;
+  bookings?: Booking[];
+  message?: string;
+};
+
 const sessionTypes: SessionType[] = [
   {
     id: "thermal",
@@ -402,6 +413,7 @@ export function App() {
         applyRemoteSession(result.customer, result.state);
         setIsAuthenticated(true);
         setSyncStatus("synced");
+        loadOperationalData();
       })
       .catch(() => setSyncStatus("local"));
   }, []);
@@ -483,6 +495,17 @@ export function App() {
     if (remoteState?.view) setView(remoteState.view);
   }
 
+  async function loadOperationalData() {
+    try {
+      const [sessionsResult, bookingsResult] = await Promise.all([getJson<SessionsResponse>("/api/sessions"), getJson<BookingsResponse>("/api/bookings")]);
+      if (sessionsResult.sessions) setSessions(sessionsResult.sessions);
+      if (bookingsResult.bookings) setBookings(bookingsResult.bookings);
+      setSyncStatus("synced");
+    } catch {
+      setSyncStatus("local");
+    }
+  }
+
   async function handleInstallApp() {
     if (!installPrompt) {
       setPwaMessage(isStandalone ? "Already installed on this device." : "Use your browser menu to add Clave to your home screen.");
@@ -522,6 +545,7 @@ export function App() {
         setIsAuthenticated(true);
         setAuthMessage("");
         pushNotice("push", "Welcome back", `${result.customer.name} signed in.`);
+        loadOperationalData();
       } catch (error) {
         setSyncStatus("error");
         setAuthMessage(error instanceof Error ? error.message : "Sign in failed.");
@@ -552,6 +576,7 @@ export function App() {
       setIsAuthenticated(true);
       setAuthMessage("");
       pushNotice("email", "Account created", `Welcome to Clave Bathhouse, ${newCustomer.name}.`);
+      loadOperationalData();
     } catch (error) {
       setSyncStatus("error");
       setAuthMessage(error instanceof Error ? error.message : "Account creation failed.");
@@ -632,32 +657,25 @@ export function App() {
       }
     }
 
-    const paidItems = createdBookings
-      .filter((booking) => booking.paid > 0 && booking.status === "confirmed")
-      .map((booking) => {
-        const session = sessions.find((item) => item.id === booking.sessionId);
-        const type = getSessionType(session?.typeId ?? "thermal");
-        return {
-          amountCents: Math.round(booking.paid * 100),
-          name: type.name,
-          quantity: 1,
-          sessionId: booking.sessionId,
-          typeId: session?.typeId
-        };
-      });
-
-    if (paidItems.length > 0) {
+    if (isAuthenticated && isOnline) {
       try {
-        const checkout = await postJson<CheckoutResponse>("/api/checkout", { items: paidItems });
-        if (checkout.url) {
-          window.location.assign(checkout.url);
-          return;
+        let latestBookings: Booking[] | undefined;
+        for (const booking of createdBookings) {
+          const result = await postJson<BookingsResponse>("/api/bookings", {
+            amountCents: Math.round(booking.paid * 100),
+            sessionId: booking.sessionId
+          });
+          latestBookings = result.bookings;
         }
+        if (latestBookings) setBookings(latestBookings);
+        setSelectedSessions([]);
+        pushNotice("email", "Booking confirmation", "Your Clave Bathhouse booking was recorded in Neon.");
+        return;
       } catch (error) {
         pushNotice(
           "sms",
-          "Stripe checkout pending",
-          error instanceof Error ? error.message : "Stripe is not configured yet, so this booking remains local."
+          "Server booking fallback",
+          error instanceof Error ? error.message : "Booking API is unavailable, so this booking remains local."
         );
       }
     }
@@ -669,7 +687,7 @@ export function App() {
     pushNotice("email", "Booking confirmation", "Your Clave Bathhouse itinerary and receipt are ready.");
   }
 
-  function cancelBooking(bookingId: string) {
+  async function cancelBooking(bookingId: string) {
     const target = bookings.find((booking) => booking.id === bookingId);
     if (!target) return;
 
@@ -683,12 +701,24 @@ export function App() {
       return;
     }
 
-    setBookings((current) => allocateWaitlist(target.sessionId, current.map((booking) => (booking.id === bookingId ? { ...booking, status: "cancelled" } : booking))));
+    try {
+      const result = await postJson<BookingsResponse>("/api/bookings", { action: "cancel", bookingId });
+      if (result.bookings) setBookings(result.bookings);
+      else setBookings((current) => allocateWaitlist(target.sessionId, current.map((booking) => (booking.id === bookingId ? { ...booking, status: "cancelled" } : booking))));
+    } catch {
+      setBookings((current) => allocateWaitlist(target.sessionId, current.map((booking) => (booking.id === bookingId ? { ...booking, status: "cancelled" } : booking))));
+    }
     pushNotice("email", "Booking cancelled", `${target.customerName}'s booking was cancelled and policy rules were applied.`);
   }
 
-  function checkIn(bookingId: string) {
-    setBookings((current) => current.map((booking) => (booking.id === bookingId ? { ...booking, status: "checked-in" } : booking)));
+  async function checkIn(bookingId: string) {
+    try {
+      const result = await postJson<BookingsResponse>("/api/bookings", { action: "check-in", bookingId });
+      if (result.bookings) setBookings(result.bookings);
+      else setBookings((current) => current.map((booking) => (booking.id === bookingId ? { ...booking, status: "checked-in" } : booking)));
+    } catch {
+      setBookings((current) => current.map((booking) => (booking.id === bookingId ? { ...booking, status: "checked-in" } : booking)));
+    }
     pushNotice("push", "Check-in complete", "Attendance has been updated for the bathhouse.");
   }
 
@@ -714,7 +744,7 @@ export function App() {
     pushNotice("push", "Profile saved", "Personal details were updated.");
   }
 
-  function createSession(event: FormEvent<HTMLFormElement>) {
+  async function createSession(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const session: Session = {
       id: `s${Date.now()}`,
@@ -724,7 +754,12 @@ export function App() {
       capacity: newCapacity,
       practitioner: "Clave Team"
     };
-    setSessions((current) => [...current, session].sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`)));
+    try {
+      const result = await postJson<SessionsResponse>("/api/sessions", { session });
+      setSessions((current) => [...current, result.session ?? session].sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`)));
+    } catch {
+      setSessions((current) => [...current, session].sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`)));
+    }
     pushNotice("email", "Schedule updated", `${getSessionType(newTypeId).name} was added to the live timetable.`);
   }
 
