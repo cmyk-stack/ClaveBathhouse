@@ -21,7 +21,10 @@ export default async function handler(request, response) {
   try {
     if (request.method === "GET") {
       const session = getSession(request);
-      if (!session) return sendJson(response, 200, { customer: null, state: null });
+      if (!session) {
+        const authResult = request.query?.debug === "1";
+        return sendJson(response, 200, authResult ? { customer: null, hasSession: false, state: null } : { customer: null, state: null });
+      }
 
       await ensureSchema();
       const customer = await findCustomerById(session.customerId);

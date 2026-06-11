@@ -407,15 +407,26 @@ export function App() {
   }, [bookings, customers, isAuthenticated, notices, selectedCustomerId, transactions, view]);
 
   useEffect(() => {
+    const authResult = new URLSearchParams(window.location.search).get("auth");
     getJson<AuthResponse>("/api/auth")
       .then((result) => {
-        if (!result.customer) return;
+        if (!result.customer) {
+          if (authResult === "google_success") {
+            setAuthMessage("Google sign in finished, but the session cookie was not found. Check that the callback URL and app URL use the same domain.");
+          }
+          return;
+        }
         applyRemoteSession(result.customer, result.state);
         setIsAuthenticated(true);
         setSyncStatus("synced");
         loadOperationalData();
       })
-      .catch(() => setSyncStatus("local"));
+      .catch((error) => {
+        if (authResult === "google_success") {
+          setAuthMessage(error instanceof Error ? error.message : "Google sign in finished, but the session could not be restored.");
+        }
+        setSyncStatus("local");
+      });
   }, []);
 
   useEffect(() => {

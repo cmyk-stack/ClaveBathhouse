@@ -28,7 +28,6 @@ function getRedirectUri(request) {
 }
 
 function getAppUrl(request) {
-  if (process.env.PUBLIC_APP_URL) return process.env.PUBLIC_APP_URL.replace(/\/$/, "");
   const host = request.headers["x-forwarded-host"] || request.headers.host;
   const protocol = request.headers["x-forwarded-proto"] || "https";
   return `${protocol}://${host}`;
