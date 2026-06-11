@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 
 type AppView = "home" | "book" | "locations" | "passes" | "me" | "staff" | "admin";
 type AuthMode = "login" | "signup" | "reset" | "reset-complete";
+type AdminTab = "overview" | "schedule" | "bookings" | "users" | "payments";
 type BookingStatus = "confirmed" | "waitlist" | "cancelled" | "checked-in";
 type PaymentStatus = "paid" | "refunded";
 type Channel = "push" | "email" | "sms";
@@ -420,6 +421,7 @@ export function App() {
   const [newDate, setNewDate] = useState("2026-05-27");
   const [newTime, setNewTime] = useState("16:00");
   const [newPractitioner, setNewPractitioner] = useState("Clave Team");
+  const [adminTab, setAdminTab] = useState<AdminTab>("overview");
 
   const currentCustomer = customers.find((customer) => customer.id === selectedCustomerId) ?? customers[0];
   const currentPlan = getPlan(currentCustomer.membershipId);
@@ -1092,14 +1094,8 @@ export function App() {
               <HomeWorkspace
                 bookings={customerBookings}
                 currentCustomer={currentCustomer}
-                installPromptReady={Boolean(installPrompt)}
-                isOnline={isOnline}
-                isStandalone={isStandalone}
-                onInstallApp={handleInstallApp}
-                pwaMessage={pwaMessage}
                 setView={setView}
                 sessions={sessions}
-                syncStatus={syncStatus}
               />
                 )}
 
@@ -1138,13 +1134,19 @@ export function App() {
                 cancelBooking={cancelBooking}
                 currentCustomer={currentCustomer}
                 handleSignOut={handleSignOut}
+                installPromptReady={Boolean(installPrompt)}
+                isOnline={isOnline}
+                isStandalone={isStandalone}
                 notices={notices}
+                onInstallApp={handleInstallApp}
+                pwaMessage={pwaMessage}
                 profileName={profileName}
                 profilePhone={profilePhone}
                 saveProfile={saveProfile}
                 setProfileName={setProfileName}
                 setProfilePhone={setProfilePhone}
                 sessions={sessions}
+                syncStatus={syncStatus}
               />
                 )}
 
@@ -1155,6 +1157,7 @@ export function App() {
                 bookings={bookings}
                 cancelBooking={cancelBooking}
                 createSession={createSession}
+                adminTab={adminTab}
                 currentCustomerId={currentCustomer.id}
                 customers={customers}
                 deleteSession={deleteSession}
@@ -1173,6 +1176,7 @@ export function App() {
                 setNewPractitioner={setNewPractitioner}
                 setNewTime={setNewTime}
                 setNewTypeId={setNewTypeId}
+                setAdminTab={setAdminTab}
                 transactions={transactions}
                 updateCustomerRole={updateCustomerRole}
                 updateSession={updateSession}
@@ -1402,25 +1406,13 @@ type CustomerWorkspaceProps = {
 function HomeWorkspace({
   bookings,
   currentCustomer,
-  installPromptReady,
-  isOnline,
-  isStandalone,
-  onInstallApp,
-  pwaMessage,
   sessions,
-  setView,
-  syncStatus
+  setView
 }: {
   bookings: Booking[];
   currentCustomer: Customer;
-  installPromptReady: boolean;
-  isOnline: boolean;
-  isStandalone: boolean;
-  onInstallApp: () => void;
-  pwaMessage: string;
   sessions: Session[];
   setView: (view: AppView) => void;
-  syncStatus: "local" | "syncing" | "synced" | "error";
 }) {
   const nextBooking = bookings.find((booking) => booking.status === "confirmed" || booking.status === "checked-in");
   const nextSession = nextBooking ? sessions.find((session) => session.id === nextBooking.sessionId) : sessions[0];
@@ -1428,13 +1420,6 @@ function HomeWorkspace({
   return (
     <div className="workspace-grid">
       <section className="surface welcome-card">
-        <p className="eyebrow">Welcome back</p>
-        <h3>{currentCustomer.name.split(" ")[0]}, reserve your place to unwind.</h3>
-        <p>Choose a time, number of spots, and pay only when availability is confirmed.</p>
-        <button onClick={() => setView("book")}>Book sauna spots</button>
-      </section>
-
-      <section className="surface">
         <div className="section-head">
           <div>
             <p className="eyebrow">Next visit</p>
@@ -1448,31 +1433,18 @@ function HomeWorkspace({
             <span>{nextSession.capacity - activeBookingsFor(nextSession.id, bookings).length} spots still open</span>
           </div>
         )}
+        <button onClick={() => setView("book")}>Book visit</button>
       </section>
 
       <section className="surface">
-        <p className="eyebrow">Facilities</p>
-        <div className="facility-strip">
-          {["Sauna", "Cold plunge", "Steam", "Tea lounge"].map((item) => (
-            <button key={item} onClick={() => setView("locations")}>{item}</button>
-          ))}
+        <div className="section-head">
+          <div>
+            <p className="eyebrow">Passes</p>
+            <h3>{getPlan(currentCustomer.membershipId).name}</h3>
+          </div>
+          <span className="pill">{currentCustomer.credits} credits</span>
         </div>
-      </section>
-
-      <section className="surface pwa-card">
-        <div>
-          <p className="eyebrow">App status</p>
-          <h3>{isStandalone ? "Installed app" : installPromptReady ? "Install Clave" : "PWA ready"}</h3>
-          <p>{pwaMessage}</p>
-        </div>
-        <div className="pwa-status-row">
-          <span className={`status ${isOnline ? "paid" : "waitlist"}`}>{isOnline ? "Online" : "Offline"}</span>
-          <span className={`status ${syncStatus === "synced" ? "paid" : syncStatus === "error" ? "waitlist" : ""}`}>
-            {syncStatus === "syncing" ? "Syncing" : syncStatus === "synced" ? "Synced" : syncStatus === "error" ? "Local fallback" : "Local"}
-          </span>
-          <span className="pill">Offline cache</span>
-        </div>
-        <button onClick={onInstallApp}>{isStandalone ? "Installed" : "Install app"}</button>
+        <button className="quiet" onClick={() => setView("passes")}>Manage passes</button>
       </section>
     </div>
   );
@@ -1513,13 +1485,10 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
       <section className="surface mobile-frame">
         <div className="mobile-top">
           <div>
-            <p className="eyebrow">Mobile app</p>
-            <h3>Book sauna spots</h3>
+            <p className="eyebrow">{selectedDate}</p>
+            <h3>Book visit</h3>
           </div>
-          <div className="logged-in-user" aria-label="Logged in user">
-            <span>Logged in as</span>
-            <strong>{currentCustomer.name}</strong>
-          </div>
+          <span className="pill">{currentCustomer.credits} credits</span>
         </div>
 
         <div className="filter-row">
@@ -1551,11 +1520,11 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
               >
                 <span>
                   <strong>{session.time}</strong>
-                  <small>{type.name} · {type.benefits.join(", ")}</small>
+                  <small>{type.name}</small>
                 </span>
                 <span>
                   <strong>{full ? "Waitlist" : `${session.capacity - activeCount} spots`}</strong>
-                  <small>{type.duration} min</small>
+                  <small>{formatCurrency(type.price)} · {type.duration} min</small>
                 </span>
               </button>
             );
@@ -1565,9 +1534,9 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
         <div className="checkout-bar">
           <div>
             <strong>{formatCurrency(basketTotal)}</strong>
-            <p>{currentCustomer.credits} credits available</p>
+            <p>{selectedSessions.length} selected</p>
           </div>
-          <button onClick={handleCheckout}>Pay and confirm</button>
+          <button onClick={handleCheckout}>Confirm</button>
         </div>
       </section>
     </div>
@@ -1652,25 +1621,37 @@ function ProfileWorkspace({
   cancelBooking,
   currentCustomer,
   handleSignOut,
+  installPromptReady,
+  isOnline,
+  isStandalone,
   notices,
+  onInstallApp,
+  pwaMessage,
   profileName,
   profilePhone,
   saveProfile,
   setProfileName,
   setProfilePhone,
-  sessions
+  sessions,
+  syncStatus
 }: {
   bookings: Booking[];
   cancelBooking: (bookingId: string) => void;
   currentCustomer: Customer;
   handleSignOut: () => void;
+  installPromptReady: boolean;
+  isOnline: boolean;
+  isStandalone: boolean;
   notices: Notice[];
+  onInstallApp: () => void;
+  pwaMessage: string;
   profileName: string;
   profilePhone: string;
   saveProfile: (event: FormEvent<HTMLFormElement>) => void;
   setProfileName: (value: string) => void;
   setProfilePhone: (value: string) => void;
   sessions: Session[];
+  syncStatus: "local" | "syncing" | "synced" | "error";
 }) {
   return (
     <div className="workspace-grid">
@@ -1704,6 +1685,24 @@ function ProfileWorkspace({
         <h3>Signed in as {currentCustomer.name}</h3>
         <p>{currentCustomer.email}</p>
         <button className="quiet" onClick={handleSignOut}>Sign out</button>
+      </section>
+
+      <section className="surface pwa-card compact-status">
+        <div className="section-head">
+          <div>
+            <p className="eyebrow">App</p>
+            <h3>{isStandalone ? "Installed" : installPromptReady ? "Install Clave" : "Ready"}</h3>
+          </div>
+          <span className={`status ${isOnline ? "paid" : "waitlist"}`}>{isOnline ? "Online" : "Offline"}</span>
+        </div>
+        <div className="pwa-status-row">
+          <span className={`status ${syncStatus === "synced" ? "paid" : syncStatus === "error" ? "waitlist" : ""}`}>
+            {syncStatus === "syncing" ? "Syncing" : syncStatus === "synced" ? "Synced" : syncStatus === "error" ? "Local fallback" : "Local"}
+          </span>
+          <span className="pill">Offline cache</span>
+        </div>
+        <p>{pwaMessage}</p>
+        <button className="quiet" onClick={onInstallApp}>{isStandalone ? "Installed" : "Install app"}</button>
       </section>
 
       <section className="surface">
@@ -1771,6 +1770,7 @@ function StaffWorkspace({ bookings, checkIn, sessions }: { bookings: Booking[]; 
 }
 
 type AdminWorkspaceProps = {
+  adminTab: AdminTab;
   bookings: Booking[];
   cancelBooking: (bookingId: string) => void;
   createSession: (event: FormEvent<HTMLFormElement>) => void;
@@ -1792,6 +1792,7 @@ type AdminWorkspaceProps = {
   setNewPractitioner: (value: string) => void;
   setNewTime: (value: string) => void;
   setNewTypeId: (value: string) => void;
+  setAdminTab: (value: AdminTab) => void;
   transactions: Transaction[];
   updateCustomerRole: (customerId: string, role: Role) => void;
   updateSession: (event: FormEvent<HTMLFormElement>, sessionId: string) => void;
@@ -1799,6 +1800,7 @@ type AdminWorkspaceProps = {
 
 function AdminWorkspace(props: AdminWorkspaceProps) {
   const {
+    adminTab,
     bookings,
     cancelBooking,
     createSession,
@@ -1820,6 +1822,7 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
     setNewPractitioner,
     setNewTime,
     setNewTypeId,
+    setAdminTab,
     transactions,
     updateCustomerRole,
     updateSession
@@ -1828,26 +1831,42 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
 
   return (
     <div className="workspace-grid admin-grid">
-      <section className="metric-band">
-        <article>
-          <span>Revenue</span>
-          <strong>{formatCurrency(revenue)}</strong>
-        </article>
-        <article>
-          <span>Occupancy</span>
-          <strong>{Math.round(occupancy * 100)}%</strong>
-        </article>
-        <article>
-          <span>Bookings</span>
-          <strong>{bookings.filter((booking) => booking.status !== "cancelled").length}</strong>
-        </article>
-        <article>
-          <span>Members</span>
-          <strong>{customers.filter((customer) => customer.membershipId !== "drop-in").length}</strong>
-        </article>
-      </section>
+      <nav className="admin-tabs" aria-label="Admin sections">
+        {[
+          ["overview", "Overview"],
+          ["schedule", "Schedule"],
+          ["bookings", "Bookings"],
+          ["users", "Users"],
+          ["payments", "Payments"]
+        ].map(([value, label]) => (
+          <button className={adminTab === value ? "active" : ""} key={value} onClick={() => setAdminTab(value as AdminTab)}>
+            {label}
+          </button>
+        ))}
+      </nav>
 
-      <section className="surface">
+      {adminTab === "overview" && (
+        <>
+          <section className="metric-band">
+            <article>
+              <span>Revenue</span>
+              <strong>{formatCurrency(revenue)}</strong>
+            </article>
+            <article>
+              <span>Occupancy</span>
+              <strong>{Math.round(occupancy * 100)}%</strong>
+            </article>
+            <article>
+              <span>Bookings</span>
+              <strong>{bookings.filter((booking) => booking.status !== "cancelled").length}</strong>
+            </article>
+            <article>
+              <span>Members</span>
+              <strong>{customers.filter((customer) => customer.membershipId !== "drop-in").length}</strong>
+            </article>
+          </section>
+
+          <section className="surface">
         <div className="section-head">
           <div>
             <p className="eyebrow">Production</p>
@@ -1871,7 +1890,10 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
         </div>
         {healthStatus?.missing?.length ? <p className="empty-state">Missing: {healthStatus.missing.join(", ")}</p> : null}
       </section>
+        </>
+      )}
 
+      {adminTab === "schedule" && (
       <section className="surface">
         <div className="section-head">
           <div>
@@ -1917,7 +1939,9 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
           ))}
         </div>
       </section>
+      )}
 
+      {adminTab === "bookings" && (
       <section className="surface">
         <div className="section-head">
           <div>
@@ -1941,7 +1965,9 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
           ))}
         </div>
       </section>
+      )}
 
+      {adminTab === "payments" && (
       <section className="surface">
         <div className="section-head">
           <div>
@@ -1960,7 +1986,9 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
           ))}
         </div>
       </section>
+      )}
 
+      {adminTab === "users" && (
       <section className="surface">
         <div className="section-head">
           <div>
@@ -1988,6 +2016,7 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
           ))}
         </div>
       </section>
+      )}
     </div>
   );
 }
