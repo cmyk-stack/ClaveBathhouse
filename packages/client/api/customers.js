@@ -1,4 +1,4 @@
-import { ensureSchema, listCustomers, sendError, sendJson, updateCustomerRole } from "./_db.js";
+import { countAdmins, ensureSchema, listCustomers, recordAdminAudit, sendError, sendJson, updateCustomerRole } from "./_db.js";
 import { requireRole, requireSession } from "./_security.js";
 
 const allowedRoles = new Set(["customer", "staff", "admin"]);
@@ -21,8 +21,21 @@ export default async function handler(request, response) {
         return sendJson(response, 400, { error: "bad_request", message: "Choose a valid customer role." });
       }
 
+      if (customerId === adminSession.customerId && role !== "admin" && (await countAdmins()) <= 1) {
+        return sendJson(response, 409, {
+          error: "last_admin",
+          message: "Create another admin before changing your own admin role."
+        });
+      }
+
       const customer = await updateCustomerRole({ customerId, role });
       if (!customer) return sendJson(response, 404, { error: "not_found", message: "Customer was not found." });
+      await recordAdminAudit({
+        action: "customer_role_updated",
+        actorCustomerId: adminSession.customerId,
+        details: { role },
+        targetCustomerId: customerId
+      });
       return sendJson(response, 200, { customer, customers: await listCustomers() });
     }
 

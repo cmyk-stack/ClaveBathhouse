@@ -555,10 +555,41 @@ button.quiet {
 .session-list,
 .table-list,
 .attendance-list,
+.session-admin-list,
 .notice-list,
 .customer-list {
   display: grid;
   gap: 8px;
+}
+
+.session-admin-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(38, 32, 25, 0.11);
+  border-radius: 16px;
+  background: rgba(255, 252, 246, 0.72);
+}
+
+.session-admin-row span {
+  align-self: center;
+  color: #736858;
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.session-admin-row input,
+.session-admin-row select {
+  min-height: 38px;
+  border-radius: 12px;
+  padding: 0.52rem 0.58rem;
+  font-size: 0.82rem;
+}
+
+.session-admin-row button {
+  min-height: 38px;
+  padding: 0.52rem 0.7rem;
 }
 
 .session-row {

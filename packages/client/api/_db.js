@@ -137,6 +137,17 @@ export async function ensureSchema() {
   await sql`ALTER TABLE clave_bookings ADD COLUMN IF NOT EXISTS payment_id TEXT`;
 
   await sql`
+    CREATE TABLE IF NOT EXISTS clave_admin_audit (
+      id TEXT PRIMARY KEY,
+      actor_customer_id TEXT NOT NULL REFERENCES clave_customers(id),
+      target_customer_id TEXT REFERENCES clave_customers(id),
+      action TEXT NOT NULL,
+      details JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+
+  await sql`
     CREATE TABLE IF NOT EXISTS clave_transactions (
       id TEXT PRIMARY KEY,
       booking_id TEXT,
@@ -306,6 +317,49 @@ export async function listCustomers() {
   return result.rows.map(customerFromRow);
 }
 
+export async function verifyPasswordResetToken({ email, token }) {
+  const result = await sql`
+    SELECT id, name, email, phone, membership_id, credits, payment_method, password_hash, role, stripe_customer_id
+    FROM clave_customers
+    WHERE lower(email) = lower(${email})
+      AND password_reset_token = ${token}
+      AND password_reset_expires_at > NOW()
+    LIMIT 1
+  `;
+
+  return result.rows[0] ?? null;
+}
+
+export async function updateCustomerPassword({ customerId, passwordHash }) {
+  const result = await sql`
+    UPDATE clave_customers
+    SET
+      password_hash = ${passwordHash},
+      password_reset_token = NULL,
+      password_reset_expires_at = NULL
+    WHERE id = ${customerId}
+    RETURNING id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id
+  `;
+
+  return result.rows[0] ? customerFromRow(result.rows[0]) : null;
+}
+
+export async function countAdmins() {
+  const result = await sql`
+    SELECT count(*)::int AS total
+    FROM clave_customers
+    WHERE role = 'admin'
+  `;
+  return Number(result.rows[0]?.total ?? 0);
+}
+
+export async function recordAdminAudit({ action, actorCustomerId, details = {}, targetCustomerId = null }) {
+  await sql`
+    INSERT INTO clave_admin_audit (id, actor_customer_id, target_customer_id, action, details)
+    VALUES (${`audit-${Date.now()}-${Math.random().toString(36).slice(2)}`}, ${actorCustomerId}, ${targetCustomerId}, ${action}, ${JSON.stringify(details)}::jsonb)
+  `;
+}
+
 export async function updateCustomerRole({ customerId, role }) {
   const result = await sql`
     UPDATE clave_customers
@@ -394,11 +448,12 @@ export async function upsertGoogleCustomer(profile) {
 }
 
 export async function savePasswordResetToken(email, token, expiresAt) {
-  await sql`
+  const result = await sql`
     UPDATE clave_customers
     SET password_reset_token = ${token}, password_reset_expires_at = ${expiresAt}
     WHERE lower(email) = lower(${email})
   `;
+  return result.rowCount > 0;
 }
 
 export async function getStoredState(customerId) {
@@ -483,6 +538,44 @@ export async function createSessionRecord(session) {
     RETURNING id, location_id, type_id, starts_at, capacity, practitioner
   `;
   return sessionFromRow(result.rows[0]);
+}
+
+export async function updateSessionRecord({ sessionId, session }) {
+  const startsAt = `${session.date}T${session.time}:00+08:00`;
+  const result = await sql`
+    UPDATE clave_sessions
+    SET
+      type_id = ${session.typeId},
+      starts_at = ${startsAt},
+      capacity = ${session.capacity},
+      practitioner = ${session.practitioner ?? "Clave Team"},
+      location_id = ${session.locationId ?? "scarborough"}
+    WHERE id = ${sessionId}
+    RETURNING id, location_id, type_id, starts_at, capacity, practitioner
+  `;
+  return result.rows[0] ? sessionFromRow(result.rows[0]) : null;
+}
+
+export async function deleteSessionRecord({ sessionId }) {
+  const activeBookings = await sql`
+    SELECT count(*)::int AS total
+    FROM clave_bookings
+    WHERE session_id = ${sessionId}
+      AND status IN ('confirmed', 'waitlist', 'checked-in')
+  `;
+
+  if (Number(activeBookings.rows[0]?.total ?? 0) > 0) {
+    const error = new Error("Cancel or move active bookings before removing this session.");
+    error.code = "session_has_bookings";
+    throw error;
+  }
+
+  const result = await sql`
+    DELETE FROM clave_sessions
+    WHERE id = ${sessionId}
+    RETURNING id, location_id, type_id, starts_at, capacity, practitioner
+  `;
+  return result.rows[0] ? sessionFromRow(result.rows[0]) : null;
 }
 
 export async function findSessionById(sessionId) {
@@ -623,6 +716,14 @@ export function sendError(response, error) {
     response.status(503).json({
       error: "database_not_configured",
       message: "Neon database is not configured. Set POSTGRES_URL in Vercel."
+    });
+    return;
+  }
+
+  if (error?.code === "session_has_bookings") {
+    response.status(409).json({
+      error: "session_has_bookings",
+      message: error.message
     });
     return;
   }

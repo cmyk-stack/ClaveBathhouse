@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 type AppView = "home" | "book" | "locations" | "passes" | "me" | "staff" | "admin";
-type AuthMode = "login" | "signup" | "reset";
+type AuthMode = "login" | "signup" | "reset" | "reset-complete";
 type BookingStatus = "confirmed" | "waitlist" | "cancelled" | "checked-in";
 type PaymentStatus = "paid" | "refunded";
 type Channel = "push" | "email" | "sms";
@@ -22,6 +22,7 @@ type Session = {
   time: string;
   capacity: number;
   practitioner: string;
+  locationId?: string;
 };
 
 type Booking = {
@@ -396,6 +397,7 @@ export function App() {
   const [authEmail, setAuthEmail] = useState("shane@example.com");
   const [authPassword, setAuthPassword] = useState("");
   const [authPhone, setAuthPhone] = useState("+61 400 100 200");
+  const [authResetToken, setAuthResetToken] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isStandalone, setIsStandalone] = useState(false);
@@ -409,6 +411,7 @@ export function App() {
   const [newTypeId, setNewTypeId] = useState("thermal");
   const [newDate, setNewDate] = useState("2026-05-27");
   const [newTime, setNewTime] = useState("16:00");
+  const [newPractitioner, setNewPractitioner] = useState("Clave Team");
 
   const currentCustomer = customers.find((customer) => customer.id === selectedCustomerId) ?? customers[0];
   const currentPlan = getPlan(currentCustomer.membershipId);
@@ -610,10 +613,41 @@ export function App() {
       try {
         const result = await postJson<AuthResponse>("/api/auth", { email: authEmail, mode: "reset" });
         setAuthMessage(result.message ?? `Password reset link sent to ${authEmail}.`);
+        setAuthPassword("");
+        setAuthMode("reset-complete");
       } catch {
         setAuthMessage(`Password reset link queued locally for ${authEmail}.`);
+        setAuthMode("reset-complete");
       }
       pushNotice("email", "Password reset", `A secure reset link was sent to ${authEmail}.`);
+      return;
+    }
+
+    if (authMode === "reset-complete") {
+      if (!authEmail || !authResetToken || authPassword.length < 8) {
+        setAuthMessage("Enter your email, reset token, and a new password of at least 8 characters.");
+        return;
+      }
+
+      try {
+        const result = await postJson<AuthResponse>("/api/auth", {
+          email: authEmail,
+          mode: "reset-complete",
+          password: authPassword,
+          token: authResetToken
+        });
+        if (!result.customer) throw new Error(result.message ?? "Password reset failed.");
+        applyRemoteSession(result.customer, result.state);
+        setIsAuthenticated(true);
+        setAuthMessage("");
+        setAuthPassword("");
+        setAuthResetToken("");
+        pushNotice("push", "Password changed", "Your password was updated and you are signed in.");
+        loadOperationalData(result.customer);
+      } catch (error) {
+        setSyncStatus("error");
+        setAuthMessage(error instanceof Error ? error.message : "Password reset failed.");
+      }
       return;
     }
 
@@ -889,13 +923,14 @@ export function App() {
       date: newDate,
       time: newTime,
       capacity: newCapacity,
-      practitioner: "Clave Team"
+      practitioner: newPractitioner.trim() || "Clave Team"
     };
     setBusyAction("session");
     setOperationalMessage("");
     try {
       const result = await postJson<SessionsResponse>("/api/sessions", { session });
-      setSessions((current) => [...current, result.session ?? session].sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`)));
+      if (result.sessions) setSessions(result.sessions);
+      else setSessions((current) => [...current, result.session ?? session].sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`)));
     } catch (error) {
       if (!isStaticPreviewError(error)) {
         setOperationalMessage(messageFromError(error, "Session could not be created in Neon."));
@@ -907,6 +942,59 @@ export function App() {
       setBusyAction("");
     }
     pushNotice("email", "Schedule updated", `${getSessionType(newTypeId).name} was added to the live timetable.`);
+  }
+
+  async function updateSession(event: FormEvent<HTMLFormElement>, sessionId: string) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const session: Session = {
+      id: sessionId,
+      capacity: Number(form.get("capacity")),
+      date: String(form.get("date")),
+      locationId: String(form.get("locationId") || "scarborough"),
+      practitioner: String(form.get("practitioner") || "Clave Team"),
+      time: String(form.get("time")),
+      typeId: String(form.get("typeId"))
+    };
+    setBusyAction("session");
+    setOperationalMessage("");
+    try {
+      const result = await postJson<SessionsResponse>("/api/sessions", { action: "update", session, sessionId });
+      if (result.sessions) setSessions(result.sessions);
+      else if (result.session) setSessions((current) => current.map((item) => (item.id === sessionId ? result.session! : item)));
+      pushNotice("push", "Session saved", "The live timetable was updated.");
+    } catch (error) {
+      if (!isStaticPreviewError(error)) {
+        setOperationalMessage(messageFromError(error, "Session could not be updated in Neon."));
+        pushNotice("sms", "Session not saved", messageFromError(error, "Session could not be updated in Neon."));
+        return;
+      }
+      setSessions((current) => current.map((item) => (item.id === sessionId ? session : item)));
+      pushNotice("sms", "Session saved locally", messageFromError(error, "The session API is unavailable."));
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  async function deleteSession(sessionId: string) {
+    setBusyAction("session");
+    setOperationalMessage("");
+    try {
+      const result = await postJson<SessionsResponse>("/api/sessions", { action: "delete", sessionId });
+      if (result.sessions) setSessions(result.sessions);
+      else setSessions((current) => current.filter((session) => session.id !== sessionId));
+      pushNotice("push", "Session removed", "The timetable was updated.");
+    } catch (error) {
+      if (!isStaticPreviewError(error)) {
+        setOperationalMessage(messageFromError(error, "Session could not be removed in Neon."));
+        pushNotice("sms", "Session not removed", messageFromError(error, "Session could not be removed in Neon."));
+        return;
+      }
+      setSessions((current) => current.filter((session) => session.id !== sessionId));
+      pushNotice("sms", "Session removed locally", messageFromError(error, "The session API is unavailable."));
+    } finally {
+      setBusyAction("");
+    }
   }
 
   async function updateCustomerRole(customerId: string, role: Role) {
@@ -968,6 +1056,7 @@ export function App() {
               authName={authName}
               authPassword={authPassword}
               authPhone={authPhone}
+              authResetToken={authResetToken}
               handleAuth={handleAuth}
               handleSocialAuth={handleSocialAuth}
               setAuthEmail={setAuthEmail}
@@ -975,6 +1064,7 @@ export function App() {
               setAuthName={setAuthName}
               setAuthPassword={setAuthPassword}
               setAuthPhone={setAuthPhone}
+              setAuthResetToken={setAuthResetToken}
             />
           ) : (
             <>
@@ -1056,9 +1146,12 @@ export function App() {
                 bookings={bookings}
                 cancelBooking={cancelBooking}
                 createSession={createSession}
+                currentCustomerId={currentCustomer.id}
                 customers={customers}
+                deleteSession={deleteSession}
                 newCapacity={newCapacity}
                 newDate={newDate}
+                newPractitioner={newPractitioner}
                 newTime={newTime}
                 newTypeId={newTypeId}
                 occupancy={occupancy}
@@ -1067,10 +1160,12 @@ export function App() {
                 sessions={sessions}
                 setNewCapacity={setNewCapacity}
                 setNewDate={setNewDate}
+                setNewPractitioner={setNewPractitioner}
                 setNewTime={setNewTime}
                 setNewTypeId={setNewTypeId}
                 transactions={transactions}
                 updateCustomerRole={updateCustomerRole}
+                updateSession={updateSession}
               />
                 )}
               </section>
@@ -1097,13 +1192,15 @@ function AuthWorkspace({
   authName,
   authPassword,
   authPhone,
+  authResetToken,
   handleAuth,
   handleSocialAuth,
   setAuthEmail,
   setAuthMode,
   setAuthName,
   setAuthPassword,
-  setAuthPhone
+  setAuthPhone,
+  setAuthResetToken
 }: {
   authEmail: string;
   authMessage: string;
@@ -1111,6 +1208,7 @@ function AuthWorkspace({
   authName: string;
   authPassword: string;
   authPhone: string;
+  authResetToken: string;
   handleAuth: (event: FormEvent<HTMLFormElement>) => void;
   handleSocialAuth: (provider: "Google") => void;
   setAuthEmail: (value: string) => void;
@@ -1118,9 +1216,11 @@ function AuthWorkspace({
   setAuthName: (value: string) => void;
   setAuthPassword: (value: string) => void;
   setAuthPhone: (value: string) => void;
+  setAuthResetToken: (value: string) => void;
 }) {
-  const title = authMode === "signup" ? "Create your account" : authMode === "reset" ? "Reset password" : "Welcome back";
-  const action = authMode === "signup" ? "Create account" : authMode === "reset" ? "Send reset link" : "Sign in";
+  const title =
+    authMode === "signup" ? "Create your account" : authMode === "reset" || authMode === "reset-complete" ? "Reset password" : "Welcome back";
+  const action = authMode === "signup" ? "Create account" : authMode === "reset" ? "Send reset token" : authMode === "reset-complete" ? "Update password" : "Sign in";
 
   return (
     <section className="auth-screen">
@@ -1132,6 +1232,8 @@ function AuthWorkspace({
             ? "Save your details, payment method, vouchers, and bathhouse bookings."
             : authMode === "reset"
               ? "Enter your account email and we will send a secure reset link."
+              : authMode === "reset-complete"
+                ? "Enter the reset token from your email and choose a new password."
               : "Sign in to book spots, manage passes, and view your next visit."}
         </p>
 
@@ -1154,11 +1256,18 @@ function AuthWorkspace({
             <input autoComplete="email" type="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} />
           </label>
 
+          {authMode === "reset-complete" && (
+            <label>
+              Reset token
+              <input autoComplete="one-time-code" value={authResetToken} onChange={(event) => setAuthResetToken(event.target.value)} />
+            </label>
+          )}
+
           {authMode !== "reset" && (
             <label>
-              Password
+              {authMode === "reset-complete" ? "New password" : "Password"}
               <input
-                autoComplete={authMode === "signup" ? "new-password" : "current-password"}
+                autoComplete={authMode === "signup" || authMode === "reset-complete" ? "new-password" : "current-password"}
                 type="password"
                 value={authPassword}
                 onChange={(event) => setAuthPassword(event.target.value)}
@@ -1173,7 +1282,8 @@ function AuthWorkspace({
         <div className="auth-links">
           {authMode !== "login" && <button onClick={() => setAuthMode("login")}>Back to login</button>}
           {authMode !== "signup" && <button onClick={() => setAuthMode("signup")}>Create account</button>}
-          {authMode !== "reset" && <button onClick={() => setAuthMode("reset")}>Forgot password</button>}
+          {authMode !== "reset" && authMode !== "reset-complete" && <button onClick={() => setAuthMode("reset")}>Forgot password</button>}
+          {authMode === "reset-complete" && <button onClick={() => setAuthMode("reset")}>Send again</button>}
           <button className="google-auth-link" onClick={() => handleSocialAuth("Google")} type="button">
             <GoogleIcon />
             <span>Google</span>
@@ -1654,9 +1764,12 @@ type AdminWorkspaceProps = {
   bookings: Booking[];
   cancelBooking: (bookingId: string) => void;
   createSession: (event: FormEvent<HTMLFormElement>) => void;
+  currentCustomerId: string;
   customers: Customer[];
+  deleteSession: (sessionId: string) => void;
   newCapacity: number;
   newDate: string;
+  newPractitioner: string;
   newTime: string;
   newTypeId: string;
   occupancy: number;
@@ -1665,10 +1778,12 @@ type AdminWorkspaceProps = {
   sessions: Session[];
   setNewCapacity: (value: number) => void;
   setNewDate: (value: string) => void;
+  setNewPractitioner: (value: string) => void;
   setNewTime: (value: string) => void;
   setNewTypeId: (value: string) => void;
   transactions: Transaction[];
   updateCustomerRole: (customerId: string, role: Role) => void;
+  updateSession: (event: FormEvent<HTMLFormElement>, sessionId: string) => void;
 };
 
 function AdminWorkspace(props: AdminWorkspaceProps) {
@@ -1676,9 +1791,12 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
     bookings,
     cancelBooking,
     createSession,
+    currentCustomerId,
     customers,
+    deleteSession,
     newCapacity,
     newDate,
+    newPractitioner,
     newTime,
     newTypeId,
     occupancy,
@@ -1687,11 +1805,14 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
     sessions,
     setNewCapacity,
     setNewDate,
+    setNewPractitioner,
     setNewTime,
     setNewTypeId,
     transactions,
-    updateCustomerRole
+    updateCustomerRole,
+    updateSession
   } = props;
+  const sessionById = new Map(sessions.map((session) => [session.id, session]));
 
   return (
     <div className="workspace-grid admin-grid">
@@ -1732,15 +1853,30 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
           <input type="date" value={newDate} onChange={(event) => setNewDate(event.target.value)} />
           <input type="time" value={newTime} onChange={(event) => setNewTime(event.target.value)} />
           <input type="number" min={1} max={40} value={newCapacity} onChange={(event) => setNewCapacity(Number(event.target.value))} />
+          <input value={newPractitioner} onChange={(event) => setNewPractitioner(event.target.value)} placeholder="Practitioner" />
           <button>Add session</button>
         </form>
-        <div className="table-list">
+        <div className="session-admin-list">
           {sessions.map((session) => (
-            <div className="table-row" key={session.id}>
-              <span>{getSessionType(session.typeId).name}</span>
-              <span>{session.date} {session.time}</span>
-              <span>{activeBookingsFor(session.id, bookings).length}/{session.capacity}</span>
-            </div>
+            <form className="session-admin-row" key={session.id} onSubmit={(event) => updateSession(event, session.id)}>
+              <select defaultValue={session.typeId} name="typeId">
+                {sessionTypes.map((type) => (
+                  <option key={type.id} value={type.id}>
+                    {type.name}
+                  </option>
+                ))}
+              </select>
+              <input defaultValue={session.date} name="date" type="date" />
+              <input defaultValue={session.time} name="time" type="time" />
+              <input defaultValue={session.capacity} min={1} name="capacity" type="number" />
+              <input defaultValue={session.practitioner} name="practitioner" placeholder="Practitioner" />
+              <input defaultValue={session.locationId ?? "scarborough"} name="locationId" placeholder="Location" />
+              <span>{activeBookingsFor(session.id, bookings).length}/{session.capacity} booked</span>
+              <button>Save</button>
+              <button className="quiet" onClick={() => deleteSession(session.id)} type="button">
+                Remove
+              </button>
+            </form>
           ))}
         </div>
       </section>
@@ -1756,7 +1892,12 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
           {bookings.map((booking) => (
             <div className="table-row" key={booking.id}>
               <span>{booking.customerName}</span>
-              <span>{booking.sessionId}</span>
+              <span>
+                {(() => {
+                  const session = sessionById.get(booking.sessionId);
+                  return session ? `${getSessionType(session.typeId).name} ${session.date} ${session.time}` : booking.sessionId;
+                })()}
+              </span>
               <span className={`status ${booking.status}`}>{booking.status}</span>
               <button className="quiet" onClick={() => cancelBooking(booking.id)}>Cancel</button>
             </div>
@@ -1800,7 +1941,7 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
               </div>
               <label className="customer-role-control">
                 <span>Role</span>
-                <select value={customer.role} onChange={(event) => updateCustomerRole(customer.id, event.target.value as Role)}>
+                <select disabled={customer.id === currentCustomerId} value={customer.role} onChange={(event) => updateCustomerRole(customer.id, event.target.value as Role)}>
                   <option value="customer">Customer</option>
                   <option value="staff">Staff</option>
                   <option value="admin">Admin</option>

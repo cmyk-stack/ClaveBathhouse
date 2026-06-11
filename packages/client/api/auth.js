@@ -8,7 +8,9 @@ import {
   savePasswordResetToken,
   sendError,
   sendJson,
-  upsertCustomer
+  updateCustomerPassword,
+  upsertCustomer,
+  verifyPasswordResetToken
 } from "./_db.js";
 import { sendTransactionalEmail } from "./_email.js";
 import { clearSessionCookie, getSession, hashPassword, setSessionCookie, verifyPassword } from "./_security.js";
@@ -100,14 +102,51 @@ export default async function handler(request, response) {
     if (mode === "reset") {
       const resetToken = crypto.randomBytes(32).toString("base64url");
       const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-      await savePasswordResetToken(email, resetToken, expiresAt);
-      await sendTransactionalEmail({
-        subject: "Clave Bathhouse password reset",
-        text: `A password reset was requested for your Clave Bathhouse account.\n\nReset token: ${resetToken}\n\nThis token expires in 1 hour.`,
-        to: email
-      });
+      const tokenSaved = await savePasswordResetToken(email, resetToken, expiresAt);
+      if (tokenSaved) {
+        await sendTransactionalEmail({
+          subject: "Clave Bathhouse password reset",
+          text: `A password reset was requested for your Clave Bathhouse account.\n\nReset token: ${resetToken}\n\nThis token expires in 1 hour.`,
+          to: email
+        });
+      }
       return sendJson(response, 200, {
-        message: `Password reset link queued for ${email}.`
+        message: "If an account exists for that email, a reset token has been sent."
+      });
+    }
+
+    if (mode === "reset-complete") {
+      const token = String(request.body?.token ?? "").trim();
+      const password = String(request.body?.password ?? "");
+      if (!email || !token || password.length < 8) {
+        return sendJson(response, 400, { error: "bad_request", message: "Enter your email, reset token, and a new password of at least 8 characters." });
+      }
+
+      const existing = await verifyPasswordResetToken({ email, token });
+      if (!existing) {
+        return sendJson(response, 400, { error: "invalid_reset_token", message: "That reset token is invalid or expired." });
+      }
+
+      const customer = await updateCustomerPassword({
+        customerId: existing.id,
+        passwordHash: await hashPassword(password)
+      });
+      if (!customer) return sendJson(response, 404, { error: "not_found", message: "Account could not be updated." });
+
+      setSessionCookie(response, {
+        customerId: customer.id,
+        email: customer.email,
+        role: customer.role
+      });
+      await sendTransactionalEmail({
+        subject: "Clave Bathhouse password changed",
+        text: `Hi ${customer.name},\n\nYour Clave Bathhouse password was changed. If this was not you, contact Clave Bathhouse straight away.`,
+        to: customer.email
+      });
+
+      return sendJson(response, 200, {
+        customer,
+        state: await getStoredState(customer.id)
       });
     }
 
