@@ -584,7 +584,9 @@ export function App() {
   }
 
   async function handleSocialAuth(provider: "Google") {
-    setAuthMessage(`${provider} OAuth is ready to connect once provider credentials are added in Vercel.`);
+    if (provider === "Google") {
+      window.location.assign("/api/auth/google");
+    }
   }
 
   async function handleSignOut() {

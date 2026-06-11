@@ -84,6 +84,7 @@ export async function ensureSchema() {
       stripe_customer_id TEXT,
       password_reset_token TEXT,
       password_reset_expires_at TIMESTAMPTZ,
+      google_sub TEXT UNIQUE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
@@ -93,6 +94,7 @@ export async function ensureSchema() {
   await sql`ALTER TABLE clave_customers ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT`;
   await sql`ALTER TABLE clave_customers ADD COLUMN IF NOT EXISTS password_reset_token TEXT`;
   await sql`ALTER TABLE clave_customers ADD COLUMN IF NOT EXISTS password_reset_expires_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE clave_customers ADD COLUMN IF NOT EXISTS google_sub TEXT UNIQUE`;
 
   await sql`
     CREATE TABLE IF NOT EXISTS clave_locations (
@@ -273,7 +275,42 @@ export async function upsertCustomer(customer, passwordHash = null) {
       credits = EXCLUDED.credits,
       payment_method = EXCLUDED.payment_method,
       password_hash = COALESCE(EXCLUDED.password_hash, clave_customers.password_hash),
-      role = COALESCE(EXCLUDED.role, clave_customers.role)
+      role = clave_customers.role
+  `;
+
+  return findCustomerByEmail(customer.email);
+}
+
+export async function upsertGoogleCustomer(profile) {
+  const existing = await findCustomerByEmail(profile.email);
+  const customer = {
+    id: existing?.id ?? `g${Date.now()}`,
+    name: profile.name || profile.email.split("@")[0],
+    email: profile.email,
+    phone: existing?.phone ?? "",
+    membershipId: existing?.membershipId ?? "drop-in",
+    credits: existing?.credits ?? 0,
+    paymentMethod: existing?.paymentMethod ?? "Payment token pending",
+    role: existing?.role ?? "customer"
+  };
+
+  await sql`
+    INSERT INTO clave_customers (id, name, email, phone, membership_id, credits, payment_method, role, google_sub)
+    VALUES (
+      ${customer.id},
+      ${customer.name},
+      ${customer.email},
+      ${customer.phone},
+      ${customer.membershipId},
+      ${customer.credits},
+      ${customer.paymentMethod},
+      ${customer.role},
+      ${profile.sub}
+    )
+    ON CONFLICT (email)
+    DO UPDATE SET
+      name = COALESCE(NULLIF(EXCLUDED.name, ''), clave_customers.name),
+      google_sub = EXCLUDED.google_sub
   `;
 
   return findCustomerByEmail(customer.email);
