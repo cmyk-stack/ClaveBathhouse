@@ -157,29 +157,33 @@ export async function ensureSchema() {
     )
   `;
 
-  for (const customer of seedCustomers) {
+  await seedFirstAdmin();
+
+  if (process.env.ENABLE_DEMO_SEED === "true") {
+    for (const customer of seedCustomers) {
+      await sql`
+        INSERT INTO clave_customers (id, name, email, phone, membership_id, credits, payment_method, password_hash, role)
+        VALUES (
+          ${customer.id},
+          ${customer.name},
+          ${customer.email},
+          ${customer.phone},
+          ${customer.membershipId},
+          ${customer.credits},
+          ${customer.paymentMethod},
+          ${customer.id === "c1" ? seedPasswordHash : null},
+          ${customer.role ?? "customer"}
+        )
+        ON CONFLICT (email) DO NOTHING
+      `;
+    }
+
     await sql`
-      INSERT INTO clave_customers (id, name, email, phone, membership_id, credits, payment_method, password_hash, role)
-      VALUES (
-        ${customer.id},
-        ${customer.name},
-        ${customer.email},
-        ${customer.phone},
-        ${customer.membershipId},
-        ${customer.credits},
-        ${customer.paymentMethod},
-        ${customer.id === "c1" ? seedPasswordHash : null},
-        ${customer.role ?? "customer"}
-      )
-      ON CONFLICT (email) DO NOTHING
+      UPDATE clave_customers
+      SET password_hash = ${seedPasswordHash}, role = 'admin'
+      WHERE email = ${seedCustomer.email} AND password_hash IS NULL
     `;
   }
-
-  await sql`
-    UPDATE clave_customers
-    SET password_hash = ${seedPasswordHash}, role = 'admin'
-    WHERE email = ${seedCustomer.email} AND password_hash IS NULL
-  `;
 
   for (const location of seedLocations) {
     await sql`
@@ -204,6 +208,34 @@ export async function ensureSchema() {
       ON CONFLICT (id) DO NOTHING
     `;
   }
+}
+
+async function seedFirstAdmin() {
+  const firstAdminEmail = process.env.FIRST_ADMIN_EMAIL;
+  if (!firstAdminEmail) return;
+
+  const firstAdminName = process.env.FIRST_ADMIN_NAME || firstAdminEmail.split("@")[0];
+  const firstAdminPassword = process.env.FIRST_ADMIN_PASSWORD;
+  const passwordHash = firstAdminPassword ? await hashPassword(firstAdminPassword) : null;
+
+  await sql`
+    INSERT INTO clave_customers (id, name, email, phone, membership_id, credits, payment_method, password_hash, role)
+    VALUES (
+      ${`admin-${firstAdminEmail.toLowerCase()}`},
+      ${firstAdminName},
+      ${firstAdminEmail},
+      ${""},
+      ${"drop-in"},
+      ${0},
+      ${"Payment token pending"},
+      ${passwordHash},
+      ${"admin"}
+    )
+    ON CONFLICT (email)
+    DO UPDATE SET
+      role = 'admin',
+      password_hash = COALESCE(EXCLUDED.password_hash, clave_customers.password_hash)
+  `;
 }
 
 export function customerFromRow(row) {
@@ -259,6 +291,19 @@ export async function findCustomerById(customerId) {
     FROM clave_customers
     WHERE id = ${customerId}
     LIMIT 1
+  `;
+
+  return result.rows[0] ? customerFromRow(result.rows[0]) : null;
+}
+
+export async function updateCustomerProfile({ customerId, name, phone }) {
+  const result = await sql`
+    UPDATE clave_customers
+    SET
+      name = ${name},
+      phone = ${phone}
+    WHERE id = ${customerId}
+    RETURNING id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id
   `;
 
   return result.rows[0] ? customerFromRow(result.rows[0]) : null;

@@ -102,6 +102,8 @@ type AuthResponse = {
   error?: string;
 };
 
+type ProfileResponse = AuthResponse;
+
 type CheckoutResponse = {
   id?: string;
   message?: string;
@@ -772,10 +774,23 @@ export function App() {
     pushNotice("email", "Membership updated", `${plan.name} billing is active with proration queued for the provider.`);
   }
 
-  function saveProfile(event: FormEvent<HTMLFormElement>) {
+  async function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setCustomers((current) => current.map((customer) => (customer.id === currentCustomer.id ? { ...customer, name: profileName, phone: profilePhone } : customer)));
-    pushNotice("push", "Profile saved", "Personal details were updated.");
+    try {
+      const result = await postJson<ProfileResponse>("/api/profile", {
+        name: profileName,
+        phone: profilePhone
+      });
+      if (result.customer) {
+        applyRemoteSession(result.customer, result.state);
+      }
+      setSyncStatus("synced");
+      pushNotice("push", "Profile saved", "Personal details were updated in Neon.");
+    } catch (error) {
+      setCustomers((current) => current.map((customer) => (customer.id === currentCustomer.id ? { ...customer, name: profileName, phone: profilePhone } : customer)));
+      setSyncStatus("error");
+      pushNotice("sms", "Profile saved locally", error instanceof Error ? error.message : "The profile API is unavailable.");
+    }
   }
 
   async function createSession(event: FormEvent<HTMLFormElement>) {

@@ -26,6 +26,10 @@ Set these values in Vercel before production use:
 ```bash
 POSTGRES_URL=... # Neon pooled Postgres connection string
 AUTH_SECRET=...
+FIRST_ADMIN_EMAIL=owner@example.com
+FIRST_ADMIN_NAME=Owner Name
+FIRST_ADMIN_PASSWORD=optional-temporary-password
+ENABLE_DEMO_SEED=false
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 GOOGLE_REDIRECT_URI=https://clave-bathhouse-client.vercel.app/api/auth/google/callback
@@ -39,5 +43,6 @@ PUBLIC_APP_URL=https://clavebathhouse.com
 - Real email/password auth with signed HttpOnly sessions
 - Role-aware access for customers, staff, and admins
 - Server-owned persistence instead of trusting browser-only state
+- Production-safe first-admin setup through environment variables
 - Stripe-hosted payment collection before booking confirmation
 - PWA install and offline app-shell caching
