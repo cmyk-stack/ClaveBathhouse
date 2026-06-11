@@ -121,6 +121,11 @@ type BookingsResponse = {
   message?: string;
 };
 
+type CustomersResponse = {
+  customer?: Customer;
+  customers?: Customer[];
+};
+
 type ApiErrorBody = {
   error?: string;
   message?: string;
@@ -453,7 +458,7 @@ export function App() {
           applyRemoteSession(result.customer, result.state);
           setIsAuthenticated(true);
           setSyncStatus("synced");
-          loadOperationalData();
+          loadOperationalData(result.customer);
           window.history.replaceState({}, "", window.location.pathname);
         })
         .catch((error) => {
@@ -474,7 +479,7 @@ export function App() {
         applyRemoteSession(result.customer, result.state);
         setIsAuthenticated(true);
         setSyncStatus("synced");
-        loadOperationalData();
+        loadOperationalData(result.customer);
       })
       .catch((error) => {
         if (authResult === "google_success") {
@@ -560,13 +565,18 @@ export function App() {
     if (remoteState?.view) setView(remoteState.view);
   }
 
-  async function loadOperationalData() {
+  async function loadOperationalData(customer = currentCustomer) {
     setIsLoadingOperations(true);
     setOperationalMessage("");
     try {
-      const [sessionsResult, bookingsResult] = await Promise.all([getJson<SessionsResponse>("/api/sessions"), getJson<BookingsResponse>("/api/bookings")]);
+      const [sessionsResult, bookingsResult, customersResult] = await Promise.all([
+        getJson<SessionsResponse>("/api/sessions"),
+        getJson<BookingsResponse>("/api/bookings"),
+        customer.role === "admin" ? getJson<CustomersResponse>("/api/customers") : Promise.resolve<CustomersResponse>({})
+      ]);
       if (sessionsResult.sessions) setSessions(sessionsResult.sessions);
       if (bookingsResult.bookings) setBookings(bookingsResult.bookings);
+      if (customersResult.customers) setCustomers(customersResult.customers);
       setSyncStatus("synced");
     } catch (error) {
       if (isStaticPreviewError(error)) {
@@ -620,7 +630,7 @@ export function App() {
         setIsAuthenticated(true);
         setAuthMessage("");
         pushNotice("push", "Welcome back", `${result.customer.name} signed in.`);
-        loadOperationalData();
+        loadOperationalData(result.customer);
       } catch (error) {
         setSyncStatus("error");
         setAuthMessage(error instanceof Error ? error.message : "Sign in failed.");
@@ -651,7 +661,7 @@ export function App() {
       setIsAuthenticated(true);
       setAuthMessage("");
       pushNotice("email", "Account created", `Welcome to Clave Bathhouse, ${newCustomer.name}.`);
-      loadOperationalData();
+      loadOperationalData(result.customer ?? newCustomer);
     } catch (error) {
       setSyncStatus("error");
       setAuthMessage(error instanceof Error ? error.message : "Account creation failed.");
@@ -899,6 +909,27 @@ export function App() {
     pushNotice("email", "Schedule updated", `${getSessionType(newTypeId).name} was added to the live timetable.`);
   }
 
+  async function updateCustomerRole(customerId: string, role: Role) {
+    setBusyAction("profile");
+    setOperationalMessage("");
+    try {
+      const result = await postJson<CustomersResponse>("/api/customers", { customerId, role });
+      if (result.customers) setCustomers(result.customers);
+      else if (result.customer) setCustomers((current) => current.map((customer) => (customer.id === customerId ? result.customer! : customer)));
+      pushNotice("push", "Role updated", "Customer access was updated in Neon.");
+    } catch (error) {
+      if (!isStaticPreviewError(error)) {
+        setOperationalMessage(messageFromError(error, "Customer role could not be updated in Neon."));
+        pushNotice("sms", "Role not saved", messageFromError(error, "Customer role could not be updated in Neon."));
+        return;
+      }
+      setCustomers((current) => current.map((customer) => (customer.id === customerId ? { ...customer, role } : customer)));
+      pushNotice("sms", "Role saved locally", messageFromError(error, "The customer admin API is unavailable."));
+    } finally {
+      setBusyAction("");
+    }
+  }
+
   function refund(transactionId: string) {
     setTransactions((current) => current.map((transaction) => (transaction.id === transactionId ? { ...transaction, status: "refunded" } : transaction)));
     pushNotice("email", "Refund issued", `Refund ${transactionId} has been sent to the payment provider.`);
@@ -1039,6 +1070,7 @@ export function App() {
                 setNewTime={setNewTime}
                 setNewTypeId={setNewTypeId}
                 transactions={transactions}
+                updateCustomerRole={updateCustomerRole}
               />
                 )}
               </section>
@@ -1636,6 +1668,7 @@ type AdminWorkspaceProps = {
   setNewTime: (value: string) => void;
   setNewTypeId: (value: string) => void;
   transactions: Transaction[];
+  updateCustomerRole: (customerId: string, role: Role) => void;
 };
 
 function AdminWorkspace(props: AdminWorkspaceProps) {
@@ -1656,7 +1689,8 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
     setNewDate,
     setNewTime,
     setNewTypeId,
-    transactions
+    transactions,
+    updateCustomerRole
   } = props;
 
   return (
@@ -1759,9 +1793,19 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
         <div className="customer-list">
           {customers.map((customer) => (
             <article key={customer.id}>
-              <strong>{customer.name}</strong>
-              <span>{customer.email}</span>
-              <span>{getPlan(customer.membershipId).name}, {customer.credits} credits</span>
+              <div>
+                <strong>{customer.name}</strong>
+                <span>{customer.email}</span>
+                <span>{getPlan(customer.membershipId).name}, {customer.credits} credits</span>
+              </div>
+              <label className="customer-role-control">
+                <span>Role</span>
+                <select value={customer.role} onChange={(event) => updateCustomerRole(customer.id, event.target.value as Role)}>
+                  <option value="customer">Customer</option>
+                  <option value="staff">Staff</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </label>
             </article>
           ))}
         </div>

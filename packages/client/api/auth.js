@@ -10,6 +10,7 @@ import {
   sendJson,
   upsertCustomer
 } from "./_db.js";
+import { sendTransactionalEmail } from "./_email.js";
 import { clearSessionCookie, getSession, hashPassword, setSessionCookie, verifyPassword } from "./_security.js";
 
 export default async function handler(request, response) {
@@ -84,6 +85,11 @@ export default async function handler(request, response) {
         email: savedCustomer.email,
         role: savedCustomer.role
       });
+      await sendTransactionalEmail({
+        subject: "Welcome to Clave Bathhouse",
+        text: `Hi ${savedCustomer.name},\n\nYour Clave Bathhouse account is ready.`,
+        to: savedCustomer.email
+      });
 
       return sendJson(response, 200, {
         customer: savedCustomer,
@@ -95,6 +101,11 @@ export default async function handler(request, response) {
       const resetToken = crypto.randomBytes(32).toString("base64url");
       const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
       await savePasswordResetToken(email, resetToken, expiresAt);
+      await sendTransactionalEmail({
+        subject: "Clave Bathhouse password reset",
+        text: `A password reset was requested for your Clave Bathhouse account.\n\nReset token: ${resetToken}\n\nThis token expires in 1 hour.`,
+        to: email
+      });
       return sendJson(response, 200, {
         message: `Password reset link queued for ${email}.`
       });

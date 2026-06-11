@@ -296,6 +296,27 @@ export async function findCustomerById(customerId) {
   return result.rows[0] ? customerFromRow(result.rows[0]) : null;
 }
 
+export async function listCustomers() {
+  const result = await sql`
+    SELECT id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id
+    FROM clave_customers
+    ORDER BY created_at DESC
+  `;
+
+  return result.rows.map(customerFromRow);
+}
+
+export async function updateCustomerRole({ customerId, role }) {
+  const result = await sql`
+    UPDATE clave_customers
+    SET role = ${role}
+    WHERE id = ${customerId}
+    RETURNING id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id
+  `;
+
+  return result.rows[0] ? customerFromRow(result.rows[0]) : null;
+}
+
 export async function updateCustomerProfile({ customerId, name, phone }) {
   const result = await sql`
     UPDATE clave_customers
@@ -462,6 +483,16 @@ export async function createSessionRecord(session) {
     RETURNING id, location_id, type_id, starts_at, capacity, practitioner
   `;
   return sessionFromRow(result.rows[0]);
+}
+
+export async function findSessionById(sessionId) {
+  const result = await sql`
+    SELECT id, location_id, type_id, starts_at, capacity, practitioner
+    FROM clave_sessions
+    WHERE id = ${sessionId}
+    LIMIT 1
+  `;
+  return result.rows[0] ? sessionFromRow(result.rows[0]) : null;
 }
 
 export async function listBookings({ customerId, role }) {

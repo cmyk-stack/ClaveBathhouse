@@ -30,6 +30,12 @@ http
       return;
     }
 
+    if ((req.url ?? "").startsWith("/_vercel/")) {
+      res.writeHead(200, { "Content-Type": "application/javascript; charset=utf-8" });
+      res.end("");
+      return;
+    }
+
     const urlPath = req.url === "/" ? "/index.html" : req.url ?? "/index.html";
     const filePath = normalize(join(root, urlPath));
     const safePath = filePath.startsWith(root) ? filePath : join(root, "index.html");

@@ -756,11 +756,37 @@ small,
   background: rgba(255, 252, 246, 0.72);
 }
 
+.customer-list article {
+  grid-template-columns: minmax(0, 1fr) 118px;
+  align-items: center;
+  gap: 10px;
+}
+
 .customer-list span,
 .notice-list p {
   color: #736858;
   font-size: 0.82rem;
   margin-bottom: 0;
+}
+
+.customer-role-control {
+  display: grid;
+  gap: 4px;
+}
+
+.customer-role-control span {
+  color: #736858;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.customer-role-control select {
+  min-height: 36px;
+  border-radius: 999px;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.8rem;
+  font-weight: 750;
 }
 
 .notification-rail {

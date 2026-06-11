@@ -1,4 +1,5 @@
 import { ensureSchema, getStoredState, sendError, sendJson, updateCustomerProfile } from "./_db.js";
+import { sendTransactionalEmail } from "./_email.js";
 import { requireSession } from "./_security.js";
 
 export default async function handler(request, response) {
@@ -24,6 +25,11 @@ export default async function handler(request, response) {
       phone
     });
     if (!customer) return sendJson(response, 404, { error: "not_found", message: "Customer was not found." });
+    await sendTransactionalEmail({
+      subject: "Clave Bathhouse profile updated",
+      text: `Hi ${customer.name},\n\nYour Clave Bathhouse profile details were updated.`,
+      to: customer.email
+    });
 
     return sendJson(response, 200, {
       customer,

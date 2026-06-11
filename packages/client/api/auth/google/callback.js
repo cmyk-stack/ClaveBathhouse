@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { ensureSchema, getStoredState, sendError, sendJson, upsertGoogleCustomer } from "../../_db.js";
+import { sendTransactionalEmail } from "../../_email.js";
 import { createSessionHandoffToken, setSessionCookie } from "../../_security.js";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -108,6 +109,11 @@ export default async function handler(request, response) {
       customerId: customer.id,
       email: customer.email,
       role: customer.role
+    });
+    await sendTransactionalEmail({
+      subject: "Clave Bathhouse sign-in",
+      text: `Hi ${customer.name},\n\nYour Google sign-in to Clave Bathhouse was successful.`,
+      to: customer.email
     });
 
     const handoffToken = createSessionHandoffToken({

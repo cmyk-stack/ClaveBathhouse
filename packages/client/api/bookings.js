@@ -4,10 +4,12 @@ import {
   createBookingRecord,
   ensureSchema,
   findCustomerById,
+  findSessionById,
   listBookings,
   sendError,
   sendJson
 } from "./_db.js";
+import { bookingEmailText, sendTransactionalEmail } from "./_email.js";
 import { requireRole, requireSession } from "./_security.js";
 
 export default async function handler(request, response) {
@@ -26,6 +28,12 @@ export default async function handler(request, response) {
       if (action === "cancel") {
         const booking = await cancelBookingRecord({ bookingId, session, role: session.role });
         if (!booking) return sendJson(response, 404, { error: "not_found", message: "Booking was not found." });
+        const customer = await findCustomerById(booking.customerId);
+        await sendTransactionalEmail({
+          subject: "Clave Bathhouse booking cancelled",
+          text: `Your booking ${booking.id} has been cancelled.`,
+          to: customer?.email
+        });
         return sendJson(response, 200, { booking, bookings: await listBookings({ customerId: session.customerId, role: session.role }) });
       }
 
@@ -35,6 +43,12 @@ export default async function handler(request, response) {
 
         const booking = await checkInBookingRecord({ bookingId });
         if (!booking) return sendJson(response, 404, { error: "not_found", message: "Confirmed booking was not found." });
+        const customer = await findCustomerById(booking.customerId);
+        await sendTransactionalEmail({
+          subject: "Clave Bathhouse check-in complete",
+          text: `You have been checked in for booking ${booking.id}.`,
+          to: customer?.email
+        });
         return sendJson(response, 200, { booking, bookings: await listBookings({ customerId: session.customerId, role: session.role }) });
       }
 
@@ -44,6 +58,12 @@ export default async function handler(request, response) {
 
       const booking = await createBookingRecord({ customer, sessionId, amountCents: Number(amountCents) });
       if (!booking) return sendJson(response, 404, { error: "not_found", message: "Session was not found." });
+      const bookedSession = await findSessionById(sessionId);
+      await sendTransactionalEmail({
+        subject: booking.status === "waitlist" ? "Clave Bathhouse waitlist" : "Clave Bathhouse booking confirmed",
+        text: bookingEmailText({ booking, session: bookedSession }),
+        to: customer.email
+      });
 
       return sendJson(response, 201, { booking, bookings: await listBookings({ customerId: session.customerId, role: session.role }) });
     }
