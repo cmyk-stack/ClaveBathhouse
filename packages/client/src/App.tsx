@@ -407,7 +407,27 @@ export function App() {
   }, [bookings, customers, isAuthenticated, notices, selectedCustomerId, transactions, view]);
 
   useEffect(() => {
-    const authResult = new URLSearchParams(window.location.search).get("auth");
+    const authParams = new URLSearchParams(window.location.search);
+    const authResult = authParams.get("auth");
+    const handoffToken = authParams.get("handoff");
+
+    if (authResult === "google_success" && handoffToken) {
+      postJson<AuthResponse>("/api/auth/handoff", { token: handoffToken })
+        .then((result) => {
+          if (!result.customer) throw new Error("Google sign in finished, but the account could not be loaded.");
+          applyRemoteSession(result.customer, result.state);
+          setIsAuthenticated(true);
+          setSyncStatus("synced");
+          loadOperationalData();
+          window.history.replaceState({}, "", window.location.pathname);
+        })
+        .catch((error) => {
+          setAuthMessage(error instanceof Error ? error.message : "Google sign in finished, but the session could not be restored.");
+          setSyncStatus("local");
+        });
+      return;
+    }
+
     getJson<AuthResponse>("/api/auth")
       .then((result) => {
         if (!result.customer) {

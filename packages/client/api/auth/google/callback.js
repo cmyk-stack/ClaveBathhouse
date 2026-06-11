@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { ensureSchema, getStoredState, sendError, sendJson, upsertGoogleCustomer } from "../../_db.js";
-import { setSessionCookie } from "../../_security.js";
+import { createSessionHandoffToken, setSessionCookie } from "../../_security.js";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo";
@@ -110,7 +110,12 @@ export default async function handler(request, response) {
       role: customer.role
     });
 
-    response.writeHead(302, { Location: `${getAppUrl(request)}/?auth=google_success` });
+    const handoffToken = createSessionHandoffToken({
+      customerId: customer.id,
+      email: customer.email,
+      role: customer.role
+    });
+    response.writeHead(302, { Location: `${getAppUrl(request)}/?auth=google_success&handoff=${encodeURIComponent(handoffToken)}` });
     response.end();
   } catch (error) {
     return sendError(response, error);

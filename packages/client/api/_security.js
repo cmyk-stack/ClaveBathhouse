@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 
 const COOKIE_NAME = "clave_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 14;
+const HANDOFF_TTL_SECONDS = 60;
 const PBKDF2_ITERATIONS = 210000;
 
 function getAuthSecret() {
@@ -62,6 +63,32 @@ export function setSessionCookie(response, session) {
   const token = `${payload}.${sign(payload)}`;
   const secure = process.env.VERCEL ? "; Secure" : "";
   response.setHeader("Set-Cookie", `${COOKIE_NAME}=${token}; Path=/; HttpOnly; SameSite=Lax${secure}; Max-Age=${SESSION_TTL_SECONDS}`);
+}
+
+export function createSessionHandoffToken(session) {
+  const now = Math.floor(Date.now() / 1000);
+  const payload = base64UrlJson({
+    customerId: session.customerId,
+    email: session.email,
+    exp: now + HANDOFF_TTL_SECONDS,
+    role: session.role,
+    type: "session_handoff"
+  });
+  return `${payload}.${sign(payload)}`;
+}
+
+export function verifySessionHandoffToken(token) {
+  const [payload, signature] = String(token ?? "").split(".");
+  if (!payload || !signature || !safeEqual(sign(payload), signature)) return null;
+
+  try {
+    const session = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    if (session.type !== "session_handoff") return null;
+    if (!session.exp || session.exp < Math.floor(Date.now() / 1000)) return null;
+    return session;
+  } catch {
+    return null;
+  }
 }
 
 export function clearSessionCookie(response) {
