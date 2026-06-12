@@ -57,7 +57,12 @@ export default async function handler(request, response) {
       if (!sessionId) return sendJson(response, 400, { error: "bad_request", message: "Choose a session to book." });
 
       const booking = await createBookingRecord({ customer, sessionId, amountCents: Number(amountCents) });
-      if (!booking) return sendJson(response, 404, { error: "not_found", message: "Session was not found." });
+      if (!booking) {
+        return sendJson(response, 409, {
+          error: "booking_unavailable",
+          message: "That session is unavailable or already booked for this account."
+        });
+      }
       const bookedSession = await findSessionById(sessionId);
       await sendTransactionalEmail({
         subject: booking.status === "waitlist" ? "Clave Bathhouse waitlist" : "Clave Bathhouse booking confirmed",

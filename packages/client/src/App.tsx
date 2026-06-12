@@ -175,12 +175,18 @@ const sessionTypes: SessionType[] = [
   }
 ];
 
+function localDateAfter(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 const initialSessions: Session[] = [
-  { id: "s1", typeId: "thermal", date: "2026-05-24", time: "09:00", capacity: 8, practitioner: "Mara" },
-  { id: "s2", typeId: "recovery", date: "2026-05-24", time: "11:30", capacity: 6, practitioner: "Sofia" },
-  { id: "s3", typeId: "thermal", date: "2026-05-24", time: "14:00", capacity: 2, practitioner: "Niko" },
-  { id: "s4", typeId: "ritual", date: "2026-05-25", time: "18:00", capacity: 10, practitioner: "Ari" },
-  { id: "s5", typeId: "recovery", date: "2026-05-26", time: "08:30", capacity: 7, practitioner: "Mara" }
+  { id: "s1", typeId: "thermal", date: localDateAfter(1), time: "09:00", capacity: 8, practitioner: "Mara", locationId: "scarborough" },
+  { id: "s2", typeId: "recovery", date: localDateAfter(1), time: "11:30", capacity: 6, practitioner: "Sofia", locationId: "scarborough" },
+  { id: "s3", typeId: "thermal", date: localDateAfter(1), time: "14:00", capacity: 2, practitioner: "Niko", locationId: "scarborough" },
+  { id: "s4", typeId: "ritual", date: localDateAfter(2), time: "18:00", capacity: 10, practitioner: "Ari", locationId: "fremantle" },
+  { id: "s5", typeId: "recovery", date: localDateAfter(3), time: "08:30", capacity: 7, practitioner: "Mara", locationId: "fremantle" }
 ];
 
 const plans: MembershipPlan[] = [
@@ -396,7 +402,7 @@ export function App() {
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState("c1");
-  const [selectedDate, setSelectedDate] = useState("2026-05-24");
+  const [selectedDate, setSelectedDate] = useState(() => localDateAfter(1));
   const [selectedType, setSelectedType] = useState("all");
   const [selectedSessions, setSelectedSessions] = useState<string[]>(["s2"]);
   const [profileName, setProfileName] = useState("Shane Goodhew");
@@ -418,7 +424,7 @@ export function App() {
   const [healthStatus, setHealthStatus] = useState<HealthResponse | null>(null);
   const [newCapacity, setNewCapacity] = useState(8);
   const [newTypeId, setNewTypeId] = useState("thermal");
-  const [newDate, setNewDate] = useState("2026-05-27");
+  const [newDate, setNewDate] = useState(() => localDateAfter(4));
   const [newTime, setNewTime] = useState("16:00");
   const [newPractitioner, setNewPractitioner] = useState("Clave Team");
   const [adminTab, setAdminTab] = useState<AdminTab>("overview");
@@ -788,7 +794,7 @@ export function App() {
           amount,
           status: "paid",
           method: useCredit ? "Membership credit" : currentCustomer.paymentMethod,
-          date: "2026-05-24"
+          date: new Date().toISOString().slice(0, 10)
         });
       }
     }
@@ -800,7 +806,7 @@ export function App() {
         let latestBookings: Booking[] | undefined;
         for (const booking of createdBookings) {
           const result = await postJson<BookingsResponse>("/api/bookings", {
-            amountCents: Math.round(booking.paid * 100),
+            amountCents: 0,
             sessionId: booking.sessionId
           });
           latestBookings = result.bookings;
@@ -840,7 +846,7 @@ export function App() {
     if (!session) return;
 
     const sessionStart = new Date(`${session.date}T${session.time}:00`);
-    const policyDeadline = new Date("2026-05-24T00:00:00");
+    const policyDeadline = new Date();
     if (sessionStart.getTime() - policyDeadline.getTime() < 6 * 60 * 60 * 1000) {
       pushNotice("sms", "Cancellation blocked", "This booking is inside the six hour cancellation window.");
       return;
@@ -895,7 +901,7 @@ export function App() {
       )
     );
     setTransactions((current) => [
-      { id: `txn-${Date.now()}`, bookingId: "membership-renewal", amount: plan.price, status: "paid", method: currentCustomer.paymentMethod, date: "2026-05-24" },
+      { id: `txn-${Date.now()}`, bookingId: "membership-renewal", amount: plan.price, status: "paid", method: currentCustomer.paymentMethod, date: new Date().toISOString().slice(0, 10) },
       ...current
     ]);
     pushNotice("email", "Membership updated", `${plan.name} billing is active with proration queued for the provider.`);
@@ -1536,7 +1542,7 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
 
         <div className="checkout-bar">
           <div>
-            <strong>{formatCurrency(basketTotal)}</strong>
+            <strong>No payment due</strong>
             <p>{selectedSessions.length} selected</p>
           </div>
           <button onClick={handleCheckout}>Confirm</button>
@@ -1662,9 +1668,9 @@ function ProfileWorkspace({
         <div className="section-head">
           <div>
             <p className="eyebrow">Profile</p>
-            <h3>Account and payments</h3>
+            <h3>Account details</h3>
           </div>
-          <span className="pill">Tokenized</span>
+          <span className="pill">{currentCustomer.role}</span>
         </div>
         <form className="profile-form" onSubmit={saveProfile}>
           <label>
@@ -1674,10 +1680,6 @@ function ProfileWorkspace({
           <label>
             Phone
             <input value={profilePhone} onChange={(event) => setProfilePhone(event.target.value)} />
-          </label>
-          <label>
-            Stored payment
-            <input readOnly value={currentCustomer.paymentMethod} />
           </label>
           <button>Save profile</button>
         </form>
@@ -1717,7 +1719,7 @@ function ProfileWorkspace({
         </div>
         <div className="table-list">
           {bookings.map((booking) => {
-            const session = sessions.find((item) => item.id === booking.sessionId) ?? { date: "2026-05-24", time: "TBC", typeId: "thermal" };
+            const session = sessions.find((item) => item.id === booking.sessionId) ?? { date: "TBC", time: "TBC", typeId: "thermal" };
             return (
               <div className="table-row" key={booking.id}>
                 <span>{getSessionType(session.typeId).name}</span>
@@ -1736,7 +1738,11 @@ function ProfileWorkspace({
 }
 
 function StaffWorkspace({ bookings, checkIn, sessions }: { bookings: Booking[]; checkIn: (bookingId: string) => void; sessions: Session[] }) {
-  const todaysSessions = sessions.filter((session) => session.date === "2026-05-24");
+  const today = new Date().toISOString().slice(0, 10);
+  const todaysSessions = sessions
+    .filter((session) => session.date >= today)
+    .sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`))
+    .slice(0, 8);
 
   return (
     <div className="workspace-grid staff-grid">

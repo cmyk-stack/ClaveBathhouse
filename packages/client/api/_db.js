@@ -41,13 +41,31 @@ const seedLocations = [
   { id: "fremantle", name: "Clave Fremantle", address: "Market Street, Fremantle WA", hours: "7:00am - 8:00pm" }
 ];
 
-const seedSessions = [
-  { id: "s1", locationId: "scarborough", typeId: "thermal", startsAt: "2026-05-24T09:00:00+08:00", capacity: 8, practitioner: "Mara" },
-  { id: "s2", locationId: "scarborough", typeId: "recovery", startsAt: "2026-05-24T11:30:00+08:00", capacity: 6, practitioner: "Sofia" },
-  { id: "s3", locationId: "scarborough", typeId: "thermal", startsAt: "2026-05-24T14:00:00+08:00", capacity: 2, practitioner: "Niko" },
-  { id: "s4", locationId: "fremantle", typeId: "ritual", startsAt: "2026-05-25T18:00:00+08:00", capacity: 10, practitioner: "Ari" },
-  { id: "s5", locationId: "fremantle", typeId: "recovery", startsAt: "2026-05-26T08:30:00+08:00", capacity: 7, practitioner: "Mara" }
-];
+function perthDateAfter(days) {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + days);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "Australia/Perth",
+    year: "numeric"
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function getSeedSessions() {
+  const tomorrow = perthDateAfter(1);
+  const dayAfter = perthDateAfter(2);
+  const thirdDay = perthDateAfter(3);
+  return [
+    { id: "s1", locationId: "scarborough", typeId: "thermal", startsAt: `${tomorrow}T09:00:00+08:00`, capacity: 8, practitioner: "Mara" },
+    { id: "s2", locationId: "scarborough", typeId: "recovery", startsAt: `${tomorrow}T11:30:00+08:00`, capacity: 6, practitioner: "Sofia" },
+    { id: "s3", locationId: "scarborough", typeId: "thermal", startsAt: `${tomorrow}T14:00:00+08:00`, capacity: 2, practitioner: "Niko" },
+    { id: "s4", locationId: "fremantle", typeId: "ritual", startsAt: `${dayAfter}T18:00:00+08:00`, capacity: 10, practitioner: "Ari" },
+    { id: "s5", locationId: "fremantle", typeId: "recovery", startsAt: `${thirdDay}T08:30:00+08:00`, capacity: 7, practitioner: "Mara" }
+  ];
+}
 
 const seedBookings = [
   { id: "b1", sessionId: "s1", customerId: "c2", status: "confirmed", paidCents: 5800, paymentId: "txn-1001", createdAt: "2026-05-23T09:00:00+08:00" },
@@ -211,11 +229,17 @@ export async function ensureSchema() {
     `;
   }
 
-  for (const session of seedSessions) {
+  for (const session of getSeedSessions()) {
     await sql`
       INSERT INTO clave_sessions (id, location_id, type_id, starts_at, capacity, practitioner)
       VALUES (${session.id}, ${session.locationId}, ${session.typeId}, ${session.startsAt}, ${session.capacity}, ${session.practitioner})
-      ON CONFLICT (id) DO NOTHING
+      ON CONFLICT (id)
+      DO UPDATE SET
+        location_id = EXCLUDED.location_id,
+        type_id = EXCLUDED.type_id,
+        starts_at = EXCLUDED.starts_at,
+        capacity = EXCLUDED.capacity,
+        practitioner = EXCLUDED.practitioner
     `;
   }
 
@@ -627,6 +651,15 @@ export async function createBookingRecord({ customer, sessionId, amountCents }) 
       SELECT id, capacity
       FROM clave_sessions
       WHERE id = ${sessionId}
+        AND starts_at > NOW()
+    ),
+    existing_booking AS (
+      SELECT id
+      FROM clave_bookings
+      WHERE session_id = ${sessionId}
+        AND customer_id = ${customer.id}
+        AND status IN ('confirmed', 'waitlist', 'checked-in')
+      LIMIT 1
     ),
     active_count AS (
       SELECT count(*)::int AS total
@@ -644,6 +677,7 @@ export async function createBookingRecord({ customer, sessionId, amountCents }) 
         CASE WHEN active_count.total >= target_session.capacity THEN 0 ELSE ${amountCents} END,
         CASE WHEN active_count.total >= target_session.capacity THEN NULL ELSE ${amountCents > 0 ? `txn-${Date.now()}-${sessionId}` : "membership-credit"} END
       FROM locked, target_session, active_count
+      WHERE NOT EXISTS (SELECT 1 FROM existing_booking)
       RETURNING id, session_id, customer_id, status, paid_cents, payment_id, created_at
     )
     SELECT inserted.*, ${customer.name} AS customer_name
