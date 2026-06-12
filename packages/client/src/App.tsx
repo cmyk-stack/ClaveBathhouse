@@ -394,7 +394,7 @@ export function App() {
   const [bookings, setBookings] = useState<Booking[]>(initialBookings);
   const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
-  const [notices, setNotices] = useState<Notice[]>(persistedState.notices ?? initialNotices);
+  const [notices, setNotices] = useState<Notice[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState("c1");
   const [selectedDate, setSelectedDate] = useState("2026-05-24");
   const [selectedType, setSelectedType] = useState("all");
@@ -573,9 +573,9 @@ export function App() {
       return [customer, ...withoutCustomer];
     });
 
-    if (remoteState?.notices) setNotices(remoteState.notices);
-    if (remoteState?.transactions) setTransactions(remoteState.transactions);
-    if (remoteState?.view) setView(remoteState.view);
+    setNotices(remoteState?.notices ?? []);
+    setTransactions(remoteState?.transactions ?? []);
+    setView(remoteState?.view ?? "home");
   }
 
   async function loadOperationalData(customer = currentCustomer) {
@@ -722,9 +722,12 @@ export function App() {
 
   async function handleSignOut() {
     await fetch("/api/auth", { method: "DELETE" }).catch(() => undefined);
+    window.localStorage.removeItem("clave-app-state");
     setIsAuthenticated(false);
     setAuthMode("login");
     setAuthPassword("");
+    setNotices([]);
+    setTransactions([]);
     setView("home");
   }
 
