@@ -219,12 +219,14 @@ export async function ensureSchema() {
     `;
   }
 
-  for (const booking of seedBookings) {
-    await sql`
-      INSERT INTO clave_bookings (id, session_id, customer_id, status, paid_cents, payment_id, created_at)
-      VALUES (${booking.id}, ${booking.sessionId}, ${booking.customerId}, ${booking.status}, ${booking.paidCents}, ${booking.paymentId}, ${booking.createdAt})
-      ON CONFLICT (id) DO NOTHING
-    `;
+  if (process.env.ENABLE_DEMO_SEED === "true") {
+    for (const booking of seedBookings) {
+      await sql`
+        INSERT INTO clave_bookings (id, session_id, customer_id, status, paid_cents, payment_id, created_at)
+        VALUES (${booking.id}, ${booking.sessionId}, ${booking.customerId}, ${booking.status}, ${booking.paidCents}, ${booking.paymentId}, ${booking.createdAt})
+        ON CONFLICT (id) DO NOTHING
+      `;
+    }
   }
 }
 
