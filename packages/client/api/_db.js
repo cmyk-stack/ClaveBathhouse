@@ -426,7 +426,6 @@ export async function upsertGoogleCustomer(profile) {
     const result = await sql`
       UPDATE clave_customers
       SET
-        email = ${profile.email},
         name = COALESCE(NULLIF(${name}, ''), name)
       WHERE id = ${existingBySub.id}
       RETURNING id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id
@@ -733,6 +732,30 @@ export function sendError(response, error) {
     response.status(409).json({
       error: "session_has_bookings",
       message: error.message
+    });
+    return;
+  }
+
+  if (error?.code === "23505") {
+    response.status(409).json({
+      error: "database_unique_conflict",
+      message: "That account is already linked to an existing Clave profile."
+    });
+    return;
+  }
+
+  if (error?.code === "23502") {
+    response.status(400).json({
+      error: "database_required_field",
+      message: "A required account field was missing."
+    });
+    return;
+  }
+
+  if (error?.code === "23503") {
+    response.status(409).json({
+      error: "database_relation_conflict",
+      message: "That request references a record that no longer exists."
     });
     return;
   }
