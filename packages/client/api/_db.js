@@ -561,6 +561,7 @@ export async function listSessions() {
   const result = await sql`
     SELECT id, location_id, type_id, starts_at, capacity, practitioner
     FROM clave_sessions
+    WHERE starts_at > NOW()
     ORDER BY starts_at ASC
   `;
   return result.rows.map(sessionFromRow);

@@ -591,7 +591,11 @@ export function App() {
         customer.role === "admin" ? getJson<CustomersResponse>("/api/customers") : Promise.resolve<CustomersResponse>({}),
         customer.role === "admin" ? getJson<HealthResponse>("/api/health") : Promise.resolve<HealthResponse | null>(null)
       ]);
-      if (sessionsResult.sessions) setSessions(sessionsResult.sessions);
+      if (sessionsResult.sessions) {
+        setSessions(sessionsResult.sessions);
+        const hasSelectedDate = sessionsResult.sessions.some((session) => session.date === selectedDate);
+        if (!hasSelectedDate && sessionsResult.sessions[0]) setSelectedDate(sessionsResult.sessions[0].date);
+      }
       if (bookingsResult.bookings) setBookings(bookingsResult.bookings);
       if (customersResult.customers) setCustomers(customersResult.customers);
       if (healthResult) setHealthStatus(healthResult);
