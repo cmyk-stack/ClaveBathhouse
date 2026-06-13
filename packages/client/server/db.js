@@ -2,75 +2,9 @@ import crypto from "node:crypto";
 import { sql } from "@vercel/postgres";
 import { hashPassword } from "./security.js";
 
-const seedCustomer = {
-  id: "c1",
-  name: "Shane Goodhew",
-  email: "shane@example.com",
-  phone: "+61 400 100 200",
-  membershipId: "flow",
-  credits: 2,
-  paymentMethod: "Visa token ending 4242"
-};
-
-const seedCustomers = [
-  seedCustomer,
-  {
-    id: "c2",
-    name: "Jon Bell",
-    email: "jon@example.com",
-    phone: "+61 400 300 500",
-    membershipId: "drop-in",
-    credits: 0,
-    paymentMethod: "Mastercard token ending 1881",
-    role: "staff"
-  },
-  {
-    id: "c3",
-    name: "Mia Chen",
-    email: "mia@example.com",
-    phone: "+61 411 222 333",
-    membershipId: "restore",
-    credits: 5,
-    paymentMethod: "Apple Pay token ending 9001",
-    role: "customer"
-  }
-];
-
 const seedLocations = [
   { id: "scarborough", name: "Clave Scarborough", address: "West Coast Highway, Scarborough WA", hours: "6:00am - 9:00pm" },
   { id: "fremantle", name: "Clave Fremantle", address: "Market Street, Fremantle WA", hours: "7:00am - 8:00pm" }
-];
-
-function perthDateAfter(days) {
-  const date = new Date();
-  date.setUTCDate(date.getUTCDate() + days);
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    day: "2-digit",
-    month: "2-digit",
-    timeZone: "Australia/Perth",
-    year: "numeric"
-  }).formatToParts(date);
-  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${values.year}-${values.month}-${values.day}`;
-}
-
-function getSeedSessions() {
-  const tomorrow = perthDateAfter(1);
-  const dayAfter = perthDateAfter(2);
-  const thirdDay = perthDateAfter(3);
-  return [
-    { id: "s1", locationId: "scarborough", typeId: "thermal", startsAt: `${tomorrow}T09:00:00+08:00`, capacity: 8, practitioner: "Mara" },
-    { id: "s2", locationId: "scarborough", typeId: "recovery", startsAt: `${tomorrow}T11:30:00+08:00`, capacity: 6, practitioner: "Sofia" },
-    { id: "s3", locationId: "scarborough", typeId: "thermal", startsAt: `${tomorrow}T14:00:00+08:00`, capacity: 2, practitioner: "Niko" },
-    { id: "s4", locationId: "fremantle", typeId: "ritual", startsAt: `${dayAfter}T18:00:00+08:00`, capacity: 10, practitioner: "Ari" },
-    { id: "s5", locationId: "fremantle", typeId: "recovery", startsAt: `${thirdDay}T08:30:00+08:00`, capacity: 7, practitioner: "Mara" }
-  ];
-}
-
-const seedBookings = [
-  { id: "b1", sessionId: "s1", customerId: "c2", status: "confirmed", paidCents: 5800, paymentId: "txn-1001", createdAt: "2026-05-23T09:00:00+08:00" },
-  { id: "b2", sessionId: "s3", customerId: "c3", status: "confirmed", paidCents: 0, paymentId: "txn-1002", createdAt: "2026-05-22T14:00:00+08:00" },
-  { id: "b3", sessionId: "s3", customerId: "c2", status: "confirmed", paidCents: 5800, paymentId: "txn-1003", createdAt: "2026-05-23T18:00:00+08:00" }
 ];
 
 export function isDatabaseConfigured() {
@@ -93,7 +27,6 @@ export async function checkDatabaseConnection() {
 
 export async function ensureSchema() {
   assertDatabaseConfigured();
-  const seedPasswordHash = await hashPassword("clave-demo-password");
 
   await sql`
     CREATE TABLE IF NOT EXISTS clave_customers (
@@ -208,32 +141,6 @@ export async function ensureSchema() {
 
   await seedFirstAdmin();
 
-  if (process.env.ENABLE_DEMO_SEED === "true") {
-    for (const customer of seedCustomers) {
-      await sql`
-        INSERT INTO clave_customers (id, name, email, phone, membership_id, credits, payment_method, password_hash, role)
-        VALUES (
-          ${customer.id},
-          ${customer.name},
-          ${customer.email},
-          ${customer.phone},
-          ${customer.membershipId},
-          ${customer.credits},
-          ${customer.paymentMethod},
-          ${customer.id === "c1" ? seedPasswordHash : null},
-          ${customer.role ?? "customer"}
-        )
-        ON CONFLICT (email) DO NOTHING
-      `;
-    }
-
-    await sql`
-      UPDATE clave_customers
-      SET password_hash = ${seedPasswordHash}, role = 'admin'
-      WHERE email = ${seedCustomer.email} AND password_hash IS NULL
-    `;
-  }
-
   for (const location of seedLocations) {
     await sql`
       INSERT INTO clave_locations (id, name, address, hours)
@@ -242,29 +149,6 @@ export async function ensureSchema() {
     `;
   }
 
-  for (const session of getSeedSessions()) {
-    await sql`
-      INSERT INTO clave_sessions (id, location_id, type_id, starts_at, capacity, practitioner)
-      VALUES (${session.id}, ${session.locationId}, ${session.typeId}, ${session.startsAt}, ${session.capacity}, ${session.practitioner})
-      ON CONFLICT (id)
-      DO UPDATE SET
-        location_id = EXCLUDED.location_id,
-        type_id = EXCLUDED.type_id,
-        starts_at = EXCLUDED.starts_at,
-        capacity = EXCLUDED.capacity,
-        practitioner = EXCLUDED.practitioner
-    `;
-  }
-
-  if (process.env.ENABLE_DEMO_SEED === "true") {
-    for (const booking of seedBookings) {
-      await sql`
-        INSERT INTO clave_bookings (id, session_id, customer_id, status, paid_cents, payment_id, created_at)
-        VALUES (${booking.id}, ${booking.sessionId}, ${booking.customerId}, ${booking.status}, ${booking.paidCents}, ${booking.paymentId}, ${booking.createdAt})
-        ON CONFLICT (id) DO NOTHING
-      `;
-    }
-  }
 }
 
 async function seedFirstAdmin() {
@@ -284,7 +168,7 @@ async function seedFirstAdmin() {
       ${""},
       ${"drop-in"},
       ${0},
-      ${"Payment token pending"},
+      ${""},
       ${passwordHash},
       ${"admin"}
     )
@@ -519,7 +403,7 @@ export async function upsertGoogleCustomer(profile) {
 
   const result = await sql`
     INSERT INTO clave_customers (id, name, email, phone, membership_id, credits, payment_method, role, google_sub)
-    VALUES (${`g-${crypto.randomUUID()}`}, ${name}, ${profile.email}, '', 'drop-in', 0, 'Payment token pending', 'customer', ${profile.sub})
+    VALUES (${`g-${crypto.randomUUID()}`}, ${name}, ${profile.email}, '', 'drop-in', 0, '', 'customer', ${profile.sub})
     RETURNING id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id
   `;
 

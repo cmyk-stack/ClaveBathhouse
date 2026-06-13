@@ -95,6 +95,7 @@ type PersistedAppState = {
   selectedCustomerId: string;
   transactions: Transaction[];
   view: AppView;
+  version?: number;
 };
 
 type AuthResponse = {
@@ -189,13 +190,7 @@ function localDateAfter(days: number) {
   return date.toISOString().slice(0, 10);
 }
 
-const initialSessions: Session[] = [
-  { id: "s1", typeId: "thermal", date: localDateAfter(1), time: "09:00", capacity: 8, practitioner: "Mara", locationId: "scarborough" },
-  { id: "s2", typeId: "recovery", date: localDateAfter(1), time: "11:30", capacity: 6, practitioner: "Sofia", locationId: "scarborough" },
-  { id: "s3", typeId: "thermal", date: localDateAfter(1), time: "14:00", capacity: 2, practitioner: "Niko", locationId: "scarborough" },
-  { id: "s4", typeId: "ritual", date: localDateAfter(2), time: "18:00", capacity: 10, practitioner: "Ari", locationId: "fremantle" },
-  { id: "s5", typeId: "recovery", date: localDateAfter(3), time: "08:30", capacity: 7, practitioner: "Mara", locationId: "fremantle" }
-];
+const initialSessions: Session[] = [];
 
 const plans: MembershipPlan[] = [
   {
@@ -223,90 +218,22 @@ const plans: MembershipPlan[] = [
 
 const initialCustomers: Customer[] = [
   {
-    id: "c1",
-    name: "Shane Goodhew",
-    email: "shane@example.com",
-    phone: "+61 400 100 200",
-    membershipId: "flow",
-    credits: 2,
-    paymentMethod: "Visa token ending 4242",
-    role: "admin"
-  },
-  {
-    id: "c2",
-    name: "Jon Bell",
-    email: "jon@example.com",
-    phone: "+61 400 300 500",
+    id: "pending",
+    name: "Signed out",
+    email: "",
+    phone: "",
     membershipId: "drop-in",
     credits: 0,
-    paymentMethod: "Mastercard token ending 1881",
-    role: "staff"
-  },
-  {
-    id: "c3",
-    name: "Mia Chen",
-    email: "mia@example.com",
-    phone: "+61 411 222 333",
-    membershipId: "restore",
-    credits: 5,
-    paymentMethod: "Apple Pay token ending 9001",
-    role: "customer"
+    paymentMethod: "",
+    role: "admin"
   }
 ];
 
-const initialBookings: Booking[] = [
-  {
-    id: "b1",
-    sessionId: "s1",
-    customerId: "c2",
-    customerName: "Jon Bell",
-    status: "confirmed",
-    paid: 58,
-    createdAt: "2026-05-23T09:00:00",
-    paymentId: "txn-1001"
-  },
-  {
-    id: "b2",
-    sessionId: "s3",
-    customerId: "c3",
-    customerName: "Mia Chen",
-    status: "confirmed",
-    paid: 0,
-    createdAt: "2026-05-22T14:00:00",
-    paymentId: "txn-1002"
-  },
-  {
-    id: "b3",
-    sessionId: "s3",
-    customerId: "c2",
-    customerName: "Jon Bell",
-    status: "confirmed",
-    paid: 58,
-    createdAt: "2026-05-23T18:00:00",
-    paymentId: "txn-1003"
-  }
-];
+const initialBookings: Booking[] = [];
 
-const initialTransactions: Transaction[] = [
-  { id: "txn-1001", bookingId: "b1", amount: 58, status: "paid", method: "Visa token ending 4242", date: "2026-05-23" },
-  { id: "txn-1002", bookingId: "b2", amount: 0, status: "paid", method: "Membership credit", date: "2026-05-22" },
-  { id: "txn-1003", bookingId: "b3", amount: 58, status: "paid", method: "Mastercard token ending 1881", date: "2026-05-23" }
-];
+const initialTransactions: Transaction[] = [];
 
-const initialNotices: Notice[] = [
-  {
-    id: "n1",
-    channel: "push",
-    title: "Session reminder",
-    body: "Thermal Circuit begins tomorrow at 9:00."
-  },
-  {
-    id: "n2",
-    channel: "email",
-    title: "Receipt generated",
-    body: "Receipt txn-1001 was emailed to Jon Bell."
-  }
-];
+const initialNotices: Notice[] = [];
 
 const locations: Location[] = [
   {
@@ -354,7 +281,9 @@ function normalizeAppView(view?: AppView) {
 function readPersistedState(): Partial<PersistedAppState> {
   try {
     const stored = window.localStorage.getItem("clave-app-state");
-    return stored ? (JSON.parse(stored) as Partial<PersistedAppState>) : {};
+    if (!stored) return {};
+    const parsed = JSON.parse(stored) as Partial<PersistedAppState>;
+    return parsed.version === 2 ? parsed : {};
   } catch {
     return {};
   }
@@ -413,16 +342,16 @@ export function App() {
   const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
   const [notices, setNotices] = useState<Notice[]>([]);
-  const [selectedCustomerId, setSelectedCustomerId] = useState("c1");
+  const [selectedCustomerId, setSelectedCustomerId] = useState("pending");
   const [selectedDate, setSelectedDate] = useState(() => localDateAfter(1));
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState("all");
   const [selectedSessions, setSelectedSessions] = useState<string[]>([]);
   const [bookingFeedback, setBookingFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
-  const [profileName, setProfileName] = useState("Shane Goodhew");
-  const [profilePhone, setProfilePhone] = useState("+61 400 100 200");
-  const [authName, setAuthName] = useState("Shane Goodhew");
-  const [authEmail, setAuthEmail] = useState("shane@example.com");
+  const [profileName, setProfileName] = useState("");
+  const [profilePhone, setProfilePhone] = useState("");
+  const [authName, setAuthName] = useState("");
+  const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authPhone, setAuthPhone] = useState("+61 400 100 200");
   const [authResetToken, setAuthResetToken] = useState("");
@@ -476,7 +405,8 @@ export function App() {
       isAuthenticated,
       selectedCustomerId,
       transactions,
-      view
+      view,
+      version: 2
     };
     window.localStorage.setItem("clave-app-state", JSON.stringify(nextState));
   }, [bookings, customers, isAuthenticated, selectedCustomerId, transactions, view]);
@@ -621,7 +551,7 @@ export function App() {
     } catch (error) {
       if (isStaticPreviewError(error)) {
         setSyncStatus("local");
-        setOperationalMessage("Local preview is using sample booking data. Deployed Vercel uses Neon as the source of truth.");
+        setOperationalMessage("Booking data could not be loaded. Check the app connection and try again.");
       } else {
         setSyncStatus("error");
         setOperationalMessage(messageFromError(error, "Bookings could not be loaded from Neon."));
@@ -653,8 +583,8 @@ export function App() {
         setAuthPassword("");
         setAuthMode("reset-complete");
       } catch {
-        setAuthMessage(`Password reset link queued locally for ${authEmail}.`);
-        setAuthMode("reset-complete");
+        setAuthMessage("Password reset could not be started. Check the app connection and try again.");
+        return;
       }
       pushNotice("email", "Password reset", `A secure reset link was sent to ${authEmail}.`);
       return;
@@ -721,7 +651,7 @@ export function App() {
       phone: authPhone.trim(),
       membershipId: "drop-in",
       credits: 0,
-      paymentMethod: "Payment token pending",
+      paymentMethod: "",
       role: "customer"
     };
 
@@ -756,22 +686,6 @@ export function App() {
     setView("home");
   }
 
-  function allocateWaitlist(sessionId: string, nextBookings: Booking[]) {
-    const session = sessions.find((item) => item.id === sessionId);
-    if (!session) return nextBookings;
-
-    const activeCount = activeBookingsFor(sessionId, nextBookings).length;
-    if (activeCount >= session.capacity) return nextBookings;
-
-    const nextWaitlist = waitlistFor(sessionId, nextBookings)[0];
-    if (!nextWaitlist) return nextBookings;
-
-    pushNotice("push", "Waitlist confirmed", `${nextWaitlist.customerName} was moved into ${getSessionType(session.typeId).name}.`);
-    return nextBookings.map((booking) =>
-      booking.id === nextWaitlist.id ? { ...booking, status: "confirmed" as const, paymentId: booking.paymentId ?? `txn-${Date.now()}` } : booking
-    );
-  }
-
   async function handleCheckout() {
     if (selectedSessions.length === 0) {
       setBookingFeedback({ tone: "error", message: "Choose at least one session before confirming." });
@@ -801,22 +715,15 @@ export function App() {
       return;
     }
 
-    let nextCredits = currentCustomer.credits;
     const createdBookings: Booking[] = [];
-    const createdTransactions: Transaction[] = [];
 
     for (const sessionId of validSelectedSessions) {
       const session = sessions.find((item) => item.id === sessionId);
       if (!session) continue;
 
-      const type = getSessionType(session.typeId);
       const full = activeBookingsFor(sessionId, bookings.concat(createdBookings)).length >= session.capacity;
-      const useCredit = !full && nextCredits > 0;
-      const amount = full || useCredit ? 0 : type.price;
       const bookingId = `b${Date.now()}-${sessionId}`;
       const status: BookingStatus = full ? "waitlist" : "confirmed";
-
-      if (useCredit) nextCredits -= 1;
 
       createdBookings.push({
         id: bookingId,
@@ -824,65 +731,34 @@ export function App() {
         customerId: currentCustomer.id,
         customerName: currentCustomer.name,
         status,
-        paid: amount,
-        createdAt: new Date().toISOString(),
-        paymentId: status === "confirmed" ? `txn-${Date.now()}-${sessionId}` : undefined
+        paid: 0,
+        createdAt: new Date().toISOString()
       });
+    }
 
-      if (status === "confirmed") {
-        createdTransactions.push({
-          id: `txn-${Date.now()}-${sessionId}`,
-          bookingId,
-          amount,
-          status: "paid",
-          method: useCredit ? "Membership credit" : currentCustomer.paymentMethod,
-          date: new Date().toISOString().slice(0, 10)
+    setBusyAction("booking");
+    setOperationalMessage("");
+    try {
+      let latestBookings: Booking[] | undefined;
+      for (const booking of createdBookings) {
+        const result = await postJson<BookingsResponse>("/api/bookings", {
+          amountCents: 0,
+          sessionId: booking.sessionId
         });
+        latestBookings = result.bookings;
       }
+      if (latestBookings) setBookings(latestBookings);
+      setSelectedSessions([]);
+      setBookingFeedback({ tone: "success", message: "Booking confirmed. Your visit has been saved." });
+      pushNotice("email", "Booking confirmation", "Your Clave Bathhouse booking was recorded in Neon.");
+    } catch (error) {
+      const message = messageFromError(error, "Booking could not be saved in Neon.");
+      setOperationalMessage(message);
+      setBookingFeedback({ tone: "error", message });
+      pushNotice("sms", "Booking not saved", message);
+    } finally {
+      setBusyAction("");
     }
-
-    if (isAuthenticated && isOnline) {
-      setBusyAction("booking");
-      setOperationalMessage("");
-      try {
-        let latestBookings: Booking[] | undefined;
-        for (const booking of createdBookings) {
-          const result = await postJson<BookingsResponse>("/api/bookings", {
-            amountCents: 0,
-            sessionId: booking.sessionId
-          });
-          latestBookings = result.bookings;
-        }
-        if (latestBookings) setBookings(latestBookings);
-        setSelectedSessions([]);
-        setBookingFeedback({ tone: "success", message: "Booking confirmed. Your visit has been saved." });
-        pushNotice("email", "Booking confirmation", "Your Clave Bathhouse booking was recorded in Neon.");
-        return;
-      } catch (error) {
-        if (!isStaticPreviewError(error)) {
-          const message = messageFromError(error, "Booking could not be saved in Neon.");
-          setOperationalMessage(message);
-          setBookingFeedback({ tone: "error", message });
-          pushNotice("sms", "Booking not saved", message);
-          return;
-        }
-        setBookingFeedback({ tone: "success", message: "Booking confirmed locally. It will stay available on this device." });
-        pushNotice(
-          "sms",
-          "Server booking fallback",
-          messageFromError(error, "Booking API is unavailable, so this booking remains local.")
-        );
-      } finally {
-        setBusyAction("");
-      }
-    }
-
-    setBookings((current) => createdBookings.concat(current));
-    setTransactions((current) => createdTransactions.concat(current));
-    setCustomers((current) => current.map((customer) => (customer.id === currentCustomer.id ? { ...customer, credits: nextCredits } : customer)));
-    setSelectedSessions([]);
-    setBookingFeedback({ tone: "success", message: "Booking confirmed. Your visit is ready." });
-    pushNotice("email", "Booking confirmation", "Your Clave Bathhouse itinerary and receipt are ready.");
   }
 
   async function cancelBooking(bookingId: string) {
@@ -904,14 +780,10 @@ export function App() {
     try {
       const result = await postJson<BookingsResponse>("/api/bookings", { action: "cancel", bookingId });
       if (result.bookings) setBookings(result.bookings);
-      else setBookings((current) => allocateWaitlist(target.sessionId, current.map((booking) => (booking.id === bookingId ? { ...booking, status: "cancelled" } : booking))));
     } catch (error) {
-      if (!isStaticPreviewError(error)) {
-        setOperationalMessage(messageFromError(error, "Booking could not be cancelled in Neon."));
-        pushNotice("sms", "Cancellation not saved", messageFromError(error, "Booking could not be cancelled in Neon."));
-        return;
-      }
-      setBookings((current) => allocateWaitlist(target.sessionId, current.map((booking) => (booking.id === bookingId ? { ...booking, status: "cancelled" } : booking))));
+      setOperationalMessage(messageFromError(error, "Booking could not be cancelled in Neon."));
+      pushNotice("sms", "Cancellation not saved", messageFromError(error, "Booking could not be cancelled in Neon."));
+      return;
     } finally {
       setBusyAction("");
     }
@@ -924,34 +796,18 @@ export function App() {
     try {
       const result = await postJson<BookingsResponse>("/api/bookings", { action: "check-in", bookingId });
       if (result.bookings) setBookings(result.bookings);
-      else setBookings((current) => current.map((booking) => (booking.id === bookingId ? { ...booking, status: "checked-in" } : booking)));
     } catch (error) {
-      if (!isStaticPreviewError(error)) {
-        setOperationalMessage(messageFromError(error, "Check-in could not be saved in Neon."));
-        pushNotice("sms", "Check-in not saved", messageFromError(error, "Check-in could not be saved in Neon."));
-        return;
-      }
-      setBookings((current) => current.map((booking) => (booking.id === bookingId ? { ...booking, status: "checked-in" } : booking)));
+      setOperationalMessage(messageFromError(error, "Check-in could not be saved in Neon."));
+      pushNotice("sms", "Check-in not saved", messageFromError(error, "Check-in could not be saved in Neon."));
+      return;
     } finally {
       setBusyAction("");
     }
     pushNotice("push", "Check-in complete", "Attendance has been updated for the bathhouse.");
   }
 
-  function subscribe(planId: string) {
-    const plan = getPlan(planId);
-    setCustomers((current) =>
-      current.map((customer) =>
-        customer.id === currentCustomer.id
-          ? { ...customer, membershipId: planId, credits: plan.credits, paymentMethod: customer.paymentMethod || "Payment token pending" }
-          : customer
-      )
-    );
-    setTransactions((current) => [
-      { id: `txn-${Date.now()}`, bookingId: "membership-renewal", amount: plan.price, status: "paid", method: currentCustomer.paymentMethod, date: new Date().toISOString().slice(0, 10) },
-      ...current
-    ]);
-    pushNotice("email", "Membership updated", `${plan.name} billing is active with proration queued for the provider.`);
+  function subscribe() {
+    pushNotice("sms", "Memberships need Stripe", "Membership checkout will be enabled with Stripe.");
   }
 
   async function buyVoucher(event: FormEvent<HTMLFormElement>) {
@@ -977,12 +833,7 @@ export function App() {
       }
       event.currentTarget.reset();
     } catch (error) {
-      if (!isStaticPreviewError(error)) {
-        pushNotice("sms", "Voucher not created", messageFromError(error, "Voucher could not be created."));
-        return;
-      }
-      pushNotice("email", "Voucher queued", `Gift voucher for ${formatCurrency(amount)} is ready for ${recipientEmail || currentCustomer.email}.`);
-      event.currentTarget.reset();
+      pushNotice("sms", "Voucher not created", messageFromError(error, "Voucher could not be created."));
     }
   }
 
@@ -1001,15 +852,10 @@ export function App() {
       setSyncStatus("synced");
       pushNotice("push", "Profile saved", "Personal details were updated in Neon.");
     } catch (error) {
-      if (!isStaticPreviewError(error)) {
-        setSyncStatus("error");
-        setOperationalMessage(messageFromError(error, "Profile could not be saved in Neon."));
-        pushNotice("sms", "Profile not saved", messageFromError(error, "Profile could not be saved in Neon."));
-        return;
-      }
-      setCustomers((current) => current.map((customer) => (customer.id === currentCustomer.id ? { ...customer, name: profileName, phone: profilePhone } : customer)));
       setSyncStatus("error");
-      pushNotice("sms", "Profile saved locally", messageFromError(error, "The profile API is unavailable."));
+      setOperationalMessage(messageFromError(error, "Profile could not be saved in Neon."));
+      pushNotice("sms", "Profile not saved", messageFromError(error, "Profile could not be saved in Neon."));
+      return;
     } finally {
       setBusyAction("");
     }
@@ -1031,14 +877,10 @@ export function App() {
     try {
       const result = await postJson<SessionsResponse>("/api/sessions", { session });
       if (result.sessions) setSessions(result.sessions);
-      else setSessions((current) => [...current, result.session ?? session].sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`)));
     } catch (error) {
-      if (!isStaticPreviewError(error)) {
-        setOperationalMessage(messageFromError(error, "Session could not be created in Neon."));
-        pushNotice("sms", "Schedule not saved", messageFromError(error, "Session could not be created in Neon."));
-        return;
-      }
-      setSessions((current) => [...current, session].sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`)));
+      setOperationalMessage(messageFromError(error, "Session could not be created in Neon."));
+      pushNotice("sms", "Schedule not saved", messageFromError(error, "Session could not be created in Neon."));
+      return;
     } finally {
       setBusyAction("");
     }
@@ -1065,13 +907,9 @@ export function App() {
       else if (result.session) setSessions((current) => current.map((item) => (item.id === sessionId ? result.session! : item)));
       pushNotice("push", "Session saved", "The live timetable was updated.");
     } catch (error) {
-      if (!isStaticPreviewError(error)) {
-        setOperationalMessage(messageFromError(error, "Session could not be updated in Neon."));
-        pushNotice("sms", "Session not saved", messageFromError(error, "Session could not be updated in Neon."));
-        return;
-      }
-      setSessions((current) => current.map((item) => (item.id === sessionId ? session : item)));
-      pushNotice("sms", "Session saved locally", messageFromError(error, "The session API is unavailable."));
+      setOperationalMessage(messageFromError(error, "Session could not be updated in Neon."));
+      pushNotice("sms", "Session not saved", messageFromError(error, "Session could not be updated in Neon."));
+      return;
     } finally {
       setBusyAction("");
     }
@@ -1083,16 +921,11 @@ export function App() {
     try {
       const result = await postJson<SessionsResponse>("/api/sessions", { action: "delete", sessionId });
       if (result.sessions) setSessions(result.sessions);
-      else setSessions((current) => current.filter((session) => session.id !== sessionId));
       pushNotice("push", "Session removed", "The timetable was updated.");
     } catch (error) {
-      if (!isStaticPreviewError(error)) {
-        setOperationalMessage(messageFromError(error, "Session could not be removed in Neon."));
-        pushNotice("sms", "Session not removed", messageFromError(error, "Session could not be removed in Neon."));
-        return;
-      }
-      setSessions((current) => current.filter((session) => session.id !== sessionId));
-      pushNotice("sms", "Session removed locally", messageFromError(error, "The session API is unavailable."));
+      setOperationalMessage(messageFromError(error, "Session could not be removed in Neon."));
+      pushNotice("sms", "Session not removed", messageFromError(error, "Session could not be removed in Neon."));
+      return;
     } finally {
       setBusyAction("");
     }
@@ -1107,21 +940,16 @@ export function App() {
       else if (result.customer) setCustomers((current) => current.map((customer) => (customer.id === customerId ? result.customer! : customer)));
       pushNotice("push", "Role updated", "Customer access was updated in Neon.");
     } catch (error) {
-      if (!isStaticPreviewError(error)) {
-        setOperationalMessage(messageFromError(error, "Customer role could not be updated in Neon."));
-        pushNotice("sms", "Role not saved", messageFromError(error, "Customer role could not be updated in Neon."));
-        return;
-      }
-      setCustomers((current) => current.map((customer) => (customer.id === customerId ? { ...customer, role } : customer)));
-      pushNotice("sms", "Role saved locally", messageFromError(error, "The customer admin API is unavailable."));
+      setOperationalMessage(messageFromError(error, "Customer role could not be updated in Neon."));
+      pushNotice("sms", "Role not saved", messageFromError(error, "Customer role could not be updated in Neon."));
+      return;
     } finally {
       setBusyAction("");
     }
   }
 
-  function refund(transactionId: string) {
-    setTransactions((current) => current.map((transaction) => (transaction.id === transactionId ? { ...transaction, status: "refunded" } : transaction)));
-    pushNotice("email", "Refund issued", `Refund ${transactionId} has been sent to the payment provider.`);
+  function refund() {
+    pushNotice("sms", "Refunds need Stripe", "Refund actions will be enabled with Stripe.");
   }
 
   function goToView(nextView: AppView) {
@@ -1757,7 +1585,7 @@ function PassesWorkspace({
 }: {
   buyVoucher: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   currentCustomer: Customer;
-  subscribe: (planId: string) => void;
+  subscribe: () => void;
 }) {
   const [voucherMode, setVoucherMode] = useState<VoucherMode>("send");
 
@@ -1782,7 +1610,9 @@ function PassesWorkspace({
               <strong>{plan.name}</strong>
               <span>{formatCurrency(plan.price)} / month</span>
               <p>{plan.credits} bathhouse credits renewed automatically.</p>
-              <button onClick={() => subscribe(plan.id)}>{currentCustomer.membershipId === plan.id ? "Current" : "Choose"}</button>
+              <button disabled onClick={subscribe}>
+                {currentCustomer.membershipId === plan.id ? "Current" : "Stripe required"}
+              </button>
             </article>
           ))}
         </div>
@@ -1900,7 +1730,7 @@ function ProfileWorkspace({
         </div>
         <div className="pwa-status-row">
           <span className={`status ${syncStatus === "synced" ? "paid" : syncStatus === "error" ? "waitlist" : ""}`}>
-            {syncStatus === "syncing" ? "Syncing" : syncStatus === "synced" ? "Synced" : syncStatus === "error" ? "Local fallback" : "Local"}
+            {syncStatus === "syncing" ? "Syncing" : syncStatus === "synced" ? "Synced" : syncStatus === "error" ? "Connection issue" : "Ready"}
           </span>
           <span className="pill">Offline cache</span>
         </div>
@@ -1997,7 +1827,7 @@ type AdminWorkspaceProps = {
   newTime: string;
   newTypeId: string;
   occupancy: number;
-  refund: (transactionId: string) => void;
+  refund: () => void;
   revenue: number;
   sessions: Session[];
   setNewCapacity: (value: number) => void;
@@ -2290,7 +2120,7 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
               <span>{transaction.bookingId}</span>
               <span>{formatCurrency(transaction.amount)}</span>
               <span className={`status ${transaction.status}`}>{transaction.status}</span>
-              <button className="quiet" disabled={transaction.status === "refunded"} onClick={() => refund(transaction.id)}>Refund</button>
+              <button className="quiet" disabled onClick={refund}>Stripe required</button>
             </div>
           ))}
         </div>
