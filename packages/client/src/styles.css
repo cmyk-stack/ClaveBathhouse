@@ -482,9 +482,48 @@ button.quiet {
 
 .voucher-value input {
   min-height: 42px;
+}
+
+.voucher-value span input {
   border: 0;
   background: transparent;
   padding-inline: 0;
+}
+
+.voucher-mode {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 5px;
+  border: 1px solid rgba(38, 32, 25, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 252, 246, 0.72);
+}
+
+.voucher-mode label {
+  position: relative;
+  display: grid;
+}
+
+.voucher-mode input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.voucher-mode span {
+  display: grid;
+  min-height: 34px;
+  place-items: center;
+  border-radius: 999px;
+  color: #4f463d;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.voucher-mode input:checked + span {
+  background: #2b2118;
+  color: #fff8ec;
 }
 
 .account-actions {

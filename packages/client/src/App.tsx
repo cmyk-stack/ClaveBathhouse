@@ -127,6 +127,14 @@ type CustomersResponse = {
   customers?: Customer[];
 };
 
+type VoucherResponse = {
+  creditsAdded?: number;
+  customer?: Customer;
+  voucher?: {
+    code: string;
+  };
+};
+
 type HealthResponse = {
   checks?: Record<string, boolean>;
   missing?: string[];
@@ -908,6 +916,38 @@ export function App() {
     pushNotice("email", "Membership updated", `${plan.name} billing is active with proration queued for the provider.`);
   }
 
+  async function buyVoucher(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const amount = Number(form.get("amount"));
+    const mode = String(form.get("mode"));
+    const recipientEmail = String(form.get("recipientEmail") ?? "").trim();
+
+    try {
+      const result = await postJson<VoucherResponse>("/api/vouchers", {
+        amount,
+        mode,
+        recipientEmail
+      });
+      if (result.customer) {
+        setCustomers((current) => current.map((customer) => (customer.id === result.customer!.id ? result.customer! : customer)));
+      }
+      if (mode === "credit") {
+        pushNotice("push", "Credit added", `${result.creditsAdded ?? 1} visit credit added to your account.`);
+      } else {
+        pushNotice("email", "Voucher sent", `Gift voucher ${result.voucher?.code ?? ""} was sent to ${recipientEmail}.`);
+      }
+      event.currentTarget.reset();
+    } catch (error) {
+      if (!isStaticPreviewError(error)) {
+        pushNotice("sms", "Voucher not created", messageFromError(error, "Voucher could not be created."));
+        return;
+      }
+      pushNotice("email", "Voucher queued", `Gift voucher for ${formatCurrency(amount)} is ready for ${recipientEmail || currentCustomer.email}.`);
+      event.currentTarget.reset();
+    }
+  }
+
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusyAction("profile");
@@ -1135,7 +1175,7 @@ export function App() {
                 {view === "locations" && <LocationsWorkspace locations={locations} setView={setView} />}
 
                 {view === "passes" && (
-              <PassesWorkspace currentCustomer={currentCustomer} subscribe={subscribe} />
+              <PassesWorkspace buyVoucher={buyVoucher} currentCustomer={currentCustomer} subscribe={subscribe} />
                 )}
 
                 {view === "me" && (
@@ -1579,9 +1619,11 @@ function LocationsWorkspace({ locations, setView }: { locations: Location[]; set
 }
 
 function PassesWorkspace({
+  buyVoucher,
   currentCustomer,
   subscribe
 }: {
+  buyVoucher: (event: FormEvent<HTMLFormElement>) => void;
   currentCustomer: Customer;
   subscribe: (planId: string) => void;
 }) {
@@ -1609,18 +1651,32 @@ function PassesWorkspace({
 
       <section className="surface voucher-card">
         <p className="eyebrow">Gift vouchers</p>
-        <h3>Send a bathhouse visit</h3>
-        <p>Choose a single visit or set your own voucher value.</p>
-        <div className="voucher-actions">
-          <button>$58 visit</button>
+        <h3>Send bathhouse credit</h3>
+        <p>Create a custom voucher for someone else, or add visit credit to your own account.</p>
+        <form className="voucher-actions" onSubmit={buyVoucher}>
           <label className="voucher-value">
-            Custom value
+            Value
             <span>
               <strong>$</strong>
-              <input inputMode="decimal" min="1" placeholder="Enter amount" type="number" />
+              <input inputMode="decimal" min="1" name="amount" placeholder="Enter amount" required type="number" />
             </span>
           </label>
-        </div>
+          <label className="voucher-value">
+            Recipient email
+            <input name="recipientEmail" placeholder="friend@example.com" type="email" />
+          </label>
+          <div className="voucher-mode" role="group" aria-label="Voucher delivery">
+            <label>
+              <input defaultChecked name="mode" type="radio" value="send" />
+              <span>Send by email</span>
+            </label>
+            <label>
+              <input name="mode" type="radio" value="credit" />
+              <span>Add to my account</span>
+            </label>
+          </div>
+          <button>Buy voucher</button>
+        </form>
       </section>
     </div>
   );

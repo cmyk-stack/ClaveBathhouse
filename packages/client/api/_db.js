@@ -186,6 +186,19 @@ export async function ensureSchema() {
   `;
 
   await sql`
+    CREATE TABLE IF NOT EXISTS clave_vouchers (
+      id TEXT PRIMARY KEY,
+      code TEXT UNIQUE NOT NULL,
+      purchaser_customer_id TEXT NOT NULL REFERENCES clave_customers(id),
+      recipient_email TEXT,
+      amount_cents INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'issued',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      redeemed_at TIMESTAMPTZ
+    )
+  `;
+
+  await sql`
     CREATE TABLE IF NOT EXISTS clave_app_state (
       customer_id TEXT PRIMARY KEY REFERENCES clave_customers(id) ON DELETE CASCADE,
       payload JSONB NOT NULL,
@@ -375,6 +388,38 @@ export async function updateCustomerPassword({ customerId, passwordHash }) {
   `;
 
   return result.rows[0] ? customerFromRow(result.rows[0]) : null;
+}
+
+export async function addCustomerCredits({ credits, customerId }) {
+  const result = await sql`
+    UPDATE clave_customers
+    SET credits = credits + ${credits}
+    WHERE id = ${customerId}
+    RETURNING id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id
+  `;
+
+  return result.rows[0] ? customerFromRow(result.rows[0]) : null;
+}
+
+export async function createVoucherRecord({ amountCents, purchaserCustomerId, recipientEmail }) {
+  const code = `CLAVE-${Math.random().toString(36).slice(2, 8).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+  const result = await sql`
+    INSERT INTO clave_vouchers (id, code, purchaser_customer_id, recipient_email, amount_cents)
+    VALUES (${`v-${crypto.randomUUID()}`}, ${code}, ${purchaserCustomerId}, ${recipientEmail || null}, ${amountCents})
+    RETURNING id, code, recipient_email, amount_cents, status, created_at
+  `;
+
+  const voucher = result.rows[0];
+  return voucher
+    ? {
+        amountCents: voucher.amount_cents,
+        code: voucher.code,
+        createdAt: voucher.created_at,
+        id: voucher.id,
+        recipientEmail: voucher.recipient_email,
+        status: voucher.status
+      }
+    : null;
 }
 
 export async function countAdmins() {
