@@ -89,11 +89,8 @@ type BeforeInstallPromptEvent = Event & {
 };
 
 type PersistedAppState = {
-  bookings: Booking[];
-  customers: Customer[];
   isAuthenticated: boolean;
   selectedCustomerId: string;
-  transactions: Transaction[];
   view: AppView;
   version?: number;
 };
@@ -106,12 +103,6 @@ type AuthResponse = {
 };
 
 type ProfileResponse = AuthResponse;
-
-type CheckoutResponse = {
-  id?: string;
-  message?: string;
-  url?: string;
-};
 
 type SessionsResponse = {
   session?: Session;
@@ -142,6 +133,13 @@ type HealthResponse = {
   missing?: string[];
   ok?: boolean;
   timestamp?: string;
+};
+
+type BootstrapResponse = {
+  bookings?: Booking[];
+  customers?: Customer[];
+  sessions?: Session[];
+  state?: Partial<PersistedAppState> | null;
 };
 
 type ApiErrorBody = {
@@ -374,7 +372,6 @@ export function App() {
   const [adminTab, setAdminTab] = useState<AdminTab>("overview");
 
   const currentCustomer = customers.find((customer) => customer.id === selectedCustomerId) ?? customers[0];
-  const currentPlan = getPlan(currentCustomer.membershipId);
   const canUseStaffTools = currentCustomer.role === "staff" || currentCustomer.role === "admin";
   const canUseAdminTools = currentCustomer.role === "admin";
   const navItems: AppView[] = ["home", "book", "calendar", "passes", "me"];
@@ -394,22 +391,18 @@ export function App() {
 
   const customerBookings = bookings.filter((booking) => booking.customerId === currentCustomer.id);
   const customerActiveBookings = customerBookings.filter((booking) => booking.status !== "cancelled");
-  const revenue = transactions.filter((transaction) => transaction.status === "paid").reduce((sum, transaction) => sum + transaction.amount, 0);
   const occupancy =
     sessions.reduce((sum, session) => sum + activeBookingsFor(session.id, bookings).length / session.capacity, 0) / Math.max(sessions.length, 1);
 
   useEffect(() => {
     const nextState: PersistedAppState = {
-      bookings,
-      customers,
       isAuthenticated,
       selectedCustomerId,
-      transactions,
       view,
       version: 2
     };
     window.localStorage.setItem("clave-app-state", JSON.stringify(nextState));
-  }, [bookings, customers, isAuthenticated, selectedCustomerId, transactions, view]);
+  }, [isAuthenticated, selectedCustomerId, view]);
 
   useEffect(() => {
     const authParams = new URLSearchParams(window.location.search);
@@ -420,7 +413,7 @@ export function App() {
       postJson<AuthResponse>("/api/auth/handoff", { token: handoffToken })
         .then((result) => {
           if (!result.customer) throw new Error("Google sign in finished, but the account could not be loaded.");
-          applyRemoteSession(result.customer, result.state);
+          applyRemoteSession(result.customer);
           setIsAuthenticated(true);
           setSyncStatus("synced");
           loadOperationalData(result.customer);
@@ -441,7 +434,7 @@ export function App() {
           }
           return;
         }
-        applyRemoteSession(result.customer, result.state);
+        applyRemoteSession(result.customer);
         setIsAuthenticated(true);
         setSyncStatus("synced");
         loadOperationalData(result.customer);
@@ -453,32 +446,6 @@ export function App() {
         setSyncStatus("local");
       });
   }, []);
-
-  useEffect(() => {
-    if (!isAuthenticated || !isOnline) return;
-
-    const syncTimer = window.setTimeout(() => {
-      const customer = customers.find((item) => item.id === selectedCustomerId);
-      if (!customer) return;
-      if (customer.id !== selectedCustomerId) return;
-
-      const state: PersistedAppState = {
-        bookings,
-        customers,
-        isAuthenticated,
-        selectedCustomerId,
-        transactions,
-        view
-      };
-
-      setSyncStatus("syncing");
-      postJson<{ ok: boolean }>("/api/state", { customer, state })
-        .then(() => setSyncStatus("synced"))
-        .catch(() => setSyncStatus("error"));
-    }, 650);
-
-    return () => window.clearTimeout(syncTimer);
-  }, [bookings, customers, isAuthenticated, isOnline, selectedCustomerId, transactions, view]);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(display-mode: standalone)");
@@ -515,7 +482,7 @@ export function App() {
     setNotices((current) => [{ id: `n${Date.now()}`, channel, title, body }, ...current].slice(0, 8));
   }
 
-  function applyRemoteSession(customer: Customer, remoteState?: Partial<PersistedAppState> | null) {
+  function applyRemoteSession(customer: Customer) {
     setSelectedCustomerId(customer.id);
     setProfileName(customer.name);
     setProfilePhone(customer.phone);
@@ -525,28 +492,20 @@ export function App() {
     });
 
     setNotices([]);
-    setTransactions(remoteState?.transactions ?? []);
-    setView(normalizeAppView(remoteState?.view));
   }
 
   async function loadOperationalData(customer = currentCustomer) {
     setIsLoadingOperations(true);
     setOperationalMessage("");
     try {
-      const [sessionsResult, bookingsResult, customersResult, healthResult] = await Promise.all([
-        getJson<SessionsResponse>("/api/sessions"),
-        getJson<BookingsResponse>("/api/bookings"),
-        customer.role === "admin" ? getJson<CustomersResponse>("/api/customers") : Promise.resolve<CustomersResponse>({}),
-        customer.role === "admin" ? getJson<HealthResponse>("/api/health") : Promise.resolve<HealthResponse | null>(null)
-      ]);
-      if (sessionsResult.sessions) {
-        setSessions(sessionsResult.sessions);
-        const hasSelectedDate = sessionsResult.sessions.some((session) => session.date === selectedDate);
-        if (!hasSelectedDate && sessionsResult.sessions[0]) setSelectedDate(sessionsResult.sessions[0].date);
+      const result = await getJson<BootstrapResponse>("/api/state");
+      if (result.sessions) {
+        setSessions(result.sessions);
+        const hasSelectedDate = result.sessions.some((session) => session.date === selectedDate);
+        if (!hasSelectedDate && result.sessions[0]) setSelectedDate(result.sessions[0].date);
       }
-      if (bookingsResult.bookings) setBookings(bookingsResult.bookings);
-      if (customersResult.customers) setCustomers(customersResult.customers);
-      if (healthResult) setHealthStatus(healthResult);
+      if (result.bookings) setBookings(result.bookings);
+      if (customer.role === "admin" && result.customers) setCustomers(result.customers);
       setSyncStatus("synced");
     } catch (error) {
       if (isStaticPreviewError(error)) {
@@ -604,7 +563,7 @@ export function App() {
           token: authResetToken
         });
         if (!result.customer) throw new Error(result.message ?? "Password reset failed.");
-        applyRemoteSession(result.customer, result.state);
+        applyRemoteSession(result.customer);
         setIsAuthenticated(true);
         setAuthMessage("");
         setAuthPassword("");
@@ -627,7 +586,7 @@ export function App() {
       try {
         const result = await postJson<AuthResponse>("/api/auth", { email: authEmail, mode: "login", password: authPassword });
         if (!result.customer) throw new Error(result.message ?? "Sign in failed");
-        applyRemoteSession(result.customer, result.state);
+        applyRemoteSession(result.customer);
         setIsAuthenticated(true);
         setAuthMessage("");
         pushNotice("push", "Welcome back", `${result.customer.name} signed in.`);
@@ -657,7 +616,7 @@ export function App() {
 
     try {
       const result = await postJson<AuthResponse>("/api/auth", { customer: newCustomer, mode: "signup", password: authPassword });
-      applyRemoteSession(result.customer ?? newCustomer, result.state);
+      applyRemoteSession(result.customer ?? newCustomer);
       setSyncStatus("synced");
       setIsAuthenticated(true);
       setAuthMessage("");
@@ -847,7 +806,7 @@ export function App() {
         phone: profilePhone
       });
       if (result.customer) {
-        applyRemoteSession(result.customer, result.state);
+        applyRemoteSession(result.customer);
       }
       setSyncStatus("synced");
       pushNotice("push", "Profile saved", "Personal details were updated in Neon.");
@@ -950,6 +909,17 @@ export function App() {
 
   function refund() {
     pushNotice("sms", "Refunds need Stripe", "Refund actions will be enabled with Stripe.");
+  }
+
+  async function refreshHealth() {
+    setBusyAction("profile");
+    try {
+      setHealthStatus(await getJson<HealthResponse>("/api/health"));
+    } catch (error) {
+      setOperationalMessage(messageFromError(error, "Health check could not be loaded."));
+    } finally {
+      setBusyAction("");
+    }
   }
 
   function goToView(nextView: AppView) {
@@ -1097,7 +1067,7 @@ export function App() {
                 newTypeId={newTypeId}
                 occupancy={occupancy}
                 refund={refund}
-                revenue={revenue}
+                refreshHealth={refreshHealth}
                 sessions={sessions}
                 setNewCapacity={setNewCapacity}
                 setNewDate={setNewDate}
@@ -1828,7 +1798,7 @@ type AdminWorkspaceProps = {
   newTypeId: string;
   occupancy: number;
   refund: () => void;
-  revenue: number;
+  refreshHealth: () => void;
   sessions: Session[];
   setNewCapacity: (value: number) => void;
   setNewDate: (value: string) => void;
@@ -1860,7 +1830,7 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
     newTypeId,
     occupancy,
     refund,
-    revenue,
+    refreshHealth,
     sessions,
     setNewCapacity,
     setNewDate,
@@ -1965,6 +1935,7 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
           </div>
           <span className={`status ${healthStatus?.ok ? "paid" : "waitlist"}`}>{healthStatus?.ok ? "Ready" : "Needs attention"}</span>
         </div>
+        <button className="quiet" onClick={refreshHealth}>Run check</button>
         <div className="health-grid">
           {[
             ["Database", healthStatus?.checks?.database && healthStatus?.checks?.databaseReachable],

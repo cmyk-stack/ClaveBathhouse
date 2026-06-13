@@ -25,7 +25,18 @@ export async function checkDatabaseConnection() {
   return true;
 }
 
+let schemaReadyPromise = null;
+
 export async function ensureSchema() {
+  if (schemaReadyPromise) return schemaReadyPromise;
+  schemaReadyPromise = ensureSchemaInternal().catch((error) => {
+    schemaReadyPromise = null;
+    throw error;
+  });
+  return schemaReadyPromise;
+}
+
+async function ensureSchemaInternal() {
   assertDatabaseConfigured();
 
   await sql`
