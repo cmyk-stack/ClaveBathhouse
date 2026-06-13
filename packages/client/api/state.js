@@ -1,5 +1,5 @@
-import { ensureSchema, findCustomerById, getStoredState, saveStoredState, sendError, sendJson, upsertCustomer } from "./_db.js";
-import { requireSession } from "./_security.js";
+import { ensureSchema, findCustomerById, getStoredState, saveStoredState, sendError, sendJson, upsertCustomer } from "../server/db.js";
+import { requireSession } from "../server/security.js";
 
 function withoutNotices(state) {
   if (!state || typeof state !== "object") return state;

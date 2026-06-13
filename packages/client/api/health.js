@@ -1,4 +1,4 @@
-import { checkDatabaseConnection, sendJson } from "./_db.js";
+import { checkDatabaseConnection, sendJson } from "../server/db.js";
 
 function envStatus(name) {
   return Boolean(process.env[name]);

@@ -8,9 +8,9 @@ import {
   listBookings,
   sendError,
   sendJson
-} from "./_db.js";
-import { bookingEmailText, sendTransactionalEmail } from "./_email.js";
-import { requireRole, requireSession } from "./_security.js";
+} from "../server/db.js";
+import { bookingEmailText, sendTransactionalEmail } from "../server/email.js";
+import { requireRole, requireSession } from "../server/security.js";
 
 export default async function handler(request, response) {
   try {

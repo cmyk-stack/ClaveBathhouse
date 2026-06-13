@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { sendError, sendJson } from "../_db.js";
+import { sendError, sendJson } from ".../server/db.js";
 
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 

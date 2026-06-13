@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { sql } from "@vercel/postgres";
-import { hashPassword } from "./_security.js";
+import { hashPassword } from "./security.js";
 
 const seedCustomer = {
   id: "c1",

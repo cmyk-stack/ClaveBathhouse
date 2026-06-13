@@ -1,5 +1,5 @@
-import { countAdmins, ensureSchema, listCustomers, recordAdminAudit, sendError, sendJson, updateCustomerRole } from "./_db.js";
-import { requireRole, requireSession } from "./_security.js";
+import { countAdmins, ensureSchema, listCustomers, recordAdminAudit, sendError, sendJson, updateCustomerRole } from "../server/db.js";
+import { requireRole, requireSession } from "../server/security.js";
 
 const allowedRoles = new Set(["customer", "staff", "admin"]);
 

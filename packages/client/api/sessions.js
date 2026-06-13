@@ -1,5 +1,5 @@
-import { createSessionRecord, deleteSessionRecord, ensureSchema, listSessions, recordAdminAudit, sendError, sendJson, updateSessionRecord } from "./_db.js";
-import { requireRole, requireSession } from "./_security.js";
+import { createSessionRecord, deleteSessionRecord, ensureSchema, listSessions, recordAdminAudit, sendError, sendJson, updateSessionRecord } from "../server/db.js";
+import { requireRole, requireSession } from "../server/security.js";
 
 export default async function handler(request, response) {
   try {

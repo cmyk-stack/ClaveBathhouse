@@ -1,6 +1,6 @@
-import { addCustomerCredits, createVoucherRecord, ensureSchema, findCustomerById, sendError, sendJson } from "./_db.js";
-import { sendTransactionalEmail } from "./_email.js";
-import { requireSession } from "./_security.js";
+import { addCustomerCredits, createVoucherRecord, ensureSchema, findCustomerById, sendError, sendJson } from "../server/db.js";
+import { sendTransactionalEmail } from "../server/email.js";
+import { requireSession } from "../server/security.js";
 
 export default async function handler(request, response) {
   if (request.method !== "POST") {

@@ -11,9 +11,9 @@ import {
   updateCustomerPassword,
   upsertCustomer,
   verifyPasswordResetToken
-} from "./_db.js";
-import { sendTransactionalEmail } from "./_email.js";
-import { clearSessionCookie, getSession, hashPassword, setSessionCookie, verifyPassword } from "./_security.js";
+} from "../server/db.js";
+import { sendTransactionalEmail } from "../server/email.js";
+import { clearSessionCookie, getSession, hashPassword, setSessionCookie, verifyPassword } from "../server/security.js";
 
 export default async function handler(request, response) {
   if (!["GET", "POST", "DELETE"].includes(request.method)) {

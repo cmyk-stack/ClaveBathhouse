@@ -1,6 +1,6 @@
-import { ensureSchema, getStoredState, sendError, sendJson, updateCustomerProfile } from "./_db.js";
-import { sendTransactionalEmail } from "./_email.js";
-import { requireSession } from "./_security.js";
+import { ensureSchema, getStoredState, sendError, sendJson, updateCustomerProfile } from "../server/db.js";
+import { sendTransactionalEmail } from "../server/email.js";
+import { requireSession } from "../server/security.js";
 
 export default async function handler(request, response) {
   try {
