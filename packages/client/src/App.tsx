@@ -7,6 +7,7 @@ type BookingStatus = "confirmed" | "waitlist" | "cancelled" | "checked-in";
 type PaymentStatus = "paid" | "refunded";
 type Channel = "push" | "email" | "sms";
 type Role = "customer" | "staff" | "admin";
+type VoucherMode = "send" | "credit";
 
 type SessionType = {
   id: string;
@@ -346,6 +347,10 @@ function waitlistFor(sessionId: string, bookings: Booking[]) {
   return bookings.filter((booking) => booking.sessionId === sessionId && booking.status === "waitlist");
 }
 
+function normalizeAppView(view?: AppView) {
+  return view === "locations" ? "book" : view ?? "home";
+}
+
 function readPersistedState(): Partial<PersistedAppState> {
   try {
     const stored = window.localStorage.getItem("clave-app-state");
@@ -400,7 +405,7 @@ function messageFromError(error: unknown, fallback: string) {
 
 export function App() {
   const persistedState = useMemo(() => readPersistedState(), []);
-  const [view, setView] = useState<AppView>(persistedState.view ?? "home");
+  const [view, setView] = useState<AppView>(normalizeAppView(persistedState.view));
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [sessions, setSessions] = useState<Session[]>(initialSessions);
@@ -410,6 +415,7 @@ export function App() {
   const [notices, setNotices] = useState<Notice[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState("c1");
   const [selectedDate, setSelectedDate] = useState(() => localDateAfter(1));
+  const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState("all");
   const [selectedSessions, setSelectedSessions] = useState<string[]>(["s2"]);
   const [profileName, setProfileName] = useState("Shane Goodhew");
@@ -440,7 +446,7 @@ export function App() {
   const currentPlan = getPlan(currentCustomer.membershipId);
   const canUseStaffTools = currentCustomer.role === "staff" || currentCustomer.role === "admin";
   const canUseAdminTools = currentCustomer.role === "admin";
-  const navItems: AppView[] = ["home", "book", "locations", "passes", "me"];
+  const navItems: AppView[] = ["home", "book", "passes", "me"];
   if (canUseStaffTools) navItems.push("staff");
   if (canUseAdminTools) navItems.push("admin");
 
@@ -448,13 +454,15 @@ export function App() {
     () =>
       sessions.filter((session) => {
         const matchesDate = session.date === selectedDate;
+        const matchesLocation = !selectedLocationId || (session.locationId ?? "scarborough") === selectedLocationId;
         const matchesType = selectedType === "all" || session.typeId === selectedType;
-        return matchesDate && matchesType;
+        return matchesDate && matchesLocation && matchesType;
       }),
-    [selectedDate, selectedType, sessions]
+    [selectedDate, selectedLocationId, selectedType, sessions]
   );
 
   const customerBookings = bookings.filter((booking) => booking.customerId === currentCustomer.id);
+  const customerActiveBookings = customerBookings.filter((booking) => booking.status !== "cancelled");
   const revenue = transactions.filter((transaction) => transaction.status === "paid").reduce((sum, transaction) => sum + transaction.amount, 0);
   const occupancy =
     sessions.reduce((sum, session) => sum + activeBookingsFor(session.id, bookings).length / session.capacity, 0) / Math.max(sessions.length, 1);
@@ -586,7 +594,7 @@ export function App() {
 
     setNotices([]);
     setTransactions(remoteState?.transactions ?? []);
-    setView(remoteState?.view ?? "home");
+    setView(normalizeAppView(remoteState?.view));
   }
 
   async function loadOperationalData(customer = currentCustomer) {
@@ -1085,6 +1093,14 @@ export function App() {
     pushNotice("email", "Refund issued", `Refund ${transactionId} has been sent to the payment provider.`);
   }
 
+  function goToView(nextView: AppView) {
+    if (nextView === "book") {
+      setSelectedLocationId(null);
+      setSelectedSessions([]);
+    }
+    setView(nextView);
+  }
+
   return (
     <main className="clave-app">
       <section className="mobile-showcase">
@@ -1142,37 +1158,33 @@ export function App() {
 
                 {view === "home" && (
               <HomeWorkspace
-                bookings={customerBookings}
+                bookings={customerActiveBookings}
                 currentCustomer={currentCustomer}
-                setView={setView}
+                setView={goToView}
                 sessions={sessions}
               />
                 )}
 
                 {view === "book" && (
               <CustomerWorkspace
-                bookings={customerBookings}
-                cancelBooking={cancelBooking}
                 currentCustomer={currentCustomer}
                 handleCheckout={handleCheckout}
-                profileName={profileName}
-                profilePhone={profilePhone}
-                saveProfile={saveProfile}
+                locations={locations}
                 selectedDate={selectedDate}
+                selectedLocationId={selectedLocationId}
                 selectedSessions={selectedSessions}
                 selectedType={selectedType}
                 sessions={visibleSessions}
-                setProfileName={setProfileName}
-                setProfilePhone={setProfilePhone}
+                setSelectedLocationId={(locationId) => {
+                  setSelectedLocationId(locationId);
+                  setSelectedSessions([]);
+                }}
                 setSelectedDate={setSelectedDate}
                 setSelectedSessions={setSelectedSessions}
                 setSelectedType={setSelectedType}
-                subscribe={subscribe}
                 allBookings={bookings}
               />
                 )}
-
-                {view === "locations" && <LocationsWorkspace locations={locations} setView={setView} />}
 
                 {view === "passes" && (
               <PassesWorkspace buyVoucher={buyVoucher} currentCustomer={currentCustomer} subscribe={subscribe} />
@@ -1180,7 +1192,7 @@ export function App() {
 
                 {view === "me" && (
               <ProfileWorkspace
-                bookings={customerBookings}
+                bookings={customerActiveBookings}
                 cancelBooking={cancelBooking}
                 currentCustomer={currentCustomer}
                 handleSignOut={handleSignOut}
@@ -1235,7 +1247,7 @@ export function App() {
               </section>
               <nav className="bottom-nav" aria-label="Primary mobile navigation">
                 {navItems.map((item) => (
-                  <button className={view === item ? "active" : ""} key={item} onClick={() => setView(item)}>
+                  <button className={view === item ? "active" : ""} key={item} onClick={() => goToView(item)}>
                     <NavIcon view={item} />
                     <span>{item}</span>
                   </button>
@@ -1434,23 +1446,18 @@ function NavIcon({ view }: { view: AppView }) {
 
 type CustomerWorkspaceProps = {
   allBookings: Booking[];
-  bookings: Booking[];
-  cancelBooking: (bookingId: string) => void;
   currentCustomer: Customer;
   handleCheckout: () => void;
-  profileName: string;
-  profilePhone: string;
-  saveProfile: (event: FormEvent<HTMLFormElement>) => void;
+  locations: Location[];
   selectedDate: string;
+  selectedLocationId: string | null;
   selectedSessions: string[];
   selectedType: string;
   sessions: Session[];
-  setProfileName: (value: string) => void;
-  setProfilePhone: (value: string) => void;
+  setSelectedLocationId: (locationId: string | null) => void;
   setSelectedDate: (value: string) => void;
   setSelectedSessions: (value: string[]) => void;
   setSelectedType: (value: string) => void;
-  subscribe: (planId: string) => void;
 };
 
 function HomeWorkspace({
@@ -1503,42 +1510,39 @@ function HomeWorkspace({
 function CustomerWorkspace(props: CustomerWorkspaceProps) {
   const {
     allBookings,
-    bookings,
-    cancelBooking,
     currentCustomer,
     handleCheckout,
-    profileName,
-    profilePhone,
-    saveProfile,
+    locations,
     selectedDate,
+    selectedLocationId,
     selectedSessions,
     selectedType,
     sessions,
-    setProfileName,
-    setProfilePhone,
+    setSelectedLocationId,
     setSelectedDate,
     setSelectedSessions,
-    setSelectedType,
-    subscribe
+    setSelectedType
   } = props;
 
-  const basketTotal = selectedSessions.reduce((sum, sessionId) => {
-    const session = sessions.find((item) => item.id === sessionId);
-    if (!session) return sum;
-    const isFull = activeBookingsFor(session.id, allBookings).length >= session.capacity;
-    if (isFull || currentCustomer.credits > 0) return sum;
-    return sum + getSessionType(session.typeId).price;
-  }, 0);
+  const selectedLocation = locations.find((location) => location.id === selectedLocationId);
+
+  if (!selectedLocation) {
+    return <LocationsWorkspace locations={locations} onSelectLocation={setSelectedLocationId} />;
+  }
 
   return (
     <div className="workspace-grid customer-grid">
       <section className="surface mobile-frame">
         <div className="mobile-top">
           <div>
-            <p className="eyebrow">{selectedDate}</p>
+            <p className="eyebrow">{selectedLocation.name}</p>
             <h3>Book visit</h3>
           </div>
           <span className="pill">{currentCustomer.credits} credits</span>
+        </div>
+        <div className="booking-context">
+          <span>{selectedLocation.address}</span>
+          <button className="quiet" onClick={() => setSelectedLocationId(null)}>Change location</button>
         </div>
 
         <div className="filter-row">
@@ -1554,6 +1558,7 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
         </div>
 
         <div className="session-list">
+          {sessions.length === 0 && <p className="muted">No sessions match this location and date.</p>}
           {sessions.map((session) => {
             const type = getSessionType(session.typeId);
             const activeCount = activeBookingsFor(session.id, allBookings).length;
@@ -1593,9 +1598,14 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
   );
 }
 
-function LocationsWorkspace({ locations, setView }: { locations: Location[]; setView: (view: AppView) => void }) {
+function LocationsWorkspace({ locations, onSelectLocation }: { locations: Location[]; onSelectLocation: (locationId: string) => void }) {
   return (
-    <div className="workspace-grid">
+    <div className="workspace-grid location-picker">
+      <section className="surface location-intro">
+        <p className="eyebrow">Book</p>
+        <h3>Choose a bathhouse</h3>
+        <p>Select a location first, then choose the session time that suits you.</p>
+      </section>
       {locations.map((location) => (
         <section className="surface location-card" key={location.id}>
           <div className="location-photo" style={{ backgroundImage: `url(${location.image})` }} aria-hidden="true" />
@@ -1611,7 +1621,7 @@ function LocationsWorkspace({ locations, setView }: { locations: Location[]; set
               <span className="pill" key={facility}>{facility}</span>
             ))}
           </div>
-          <button onClick={() => setView("book")}>Book at this bathhouse</button>
+          <button onClick={() => onSelectLocation(location.id)}>Book at this bathhouse</button>
         </section>
       ))}
     </div>
@@ -1623,10 +1633,17 @@ function PassesWorkspace({
   currentCustomer,
   subscribe
 }: {
-  buyVoucher: (event: FormEvent<HTMLFormElement>) => void;
+  buyVoucher: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   currentCustomer: Customer;
   subscribe: (planId: string) => void;
 }) {
+  const [voucherMode, setVoucherMode] = useState<VoucherMode>("send");
+
+  async function handleVoucherSubmit(event: FormEvent<HTMLFormElement>) {
+    await buyVoucher(event);
+    setVoucherMode("send");
+  }
+
   return (
     <div className="workspace-grid">
       <section className="surface">
@@ -1653,7 +1670,7 @@ function PassesWorkspace({
         <p className="eyebrow">Gift vouchers</p>
         <h3>Send bathhouse credit</h3>
         <p>Create a custom voucher for someone else, or add visit credit to your own account.</p>
-        <form className="voucher-actions" onSubmit={buyVoucher}>
+        <form className="voucher-actions" onSubmit={handleVoucherSubmit}>
           <label className="voucher-value">
             Value
             <span>
@@ -1661,17 +1678,19 @@ function PassesWorkspace({
               <input inputMode="decimal" min="1" name="amount" placeholder="Enter amount" required type="number" />
             </span>
           </label>
-          <label className="voucher-value">
-            Recipient email
-            <input name="recipientEmail" placeholder="friend@example.com" type="email" />
-          </label>
+          {voucherMode === "send" && (
+            <label className="voucher-value">
+              Recipient email
+              <input name="recipientEmail" placeholder="friend@example.com" required type="email" />
+            </label>
+          )}
           <div className="voucher-mode" role="group" aria-label="Voucher delivery">
             <label>
-              <input defaultChecked name="mode" type="radio" value="send" />
+              <input checked={voucherMode === "send"} name="mode" onChange={() => setVoucherMode("send")} type="radio" value="send" />
               <span>Send by email</span>
             </label>
             <label>
-              <input name="mode" type="radio" value="credit" />
+              <input checked={voucherMode === "credit"} name="mode" onChange={() => setVoucherMode("credit")} type="radio" value="credit" />
               <span>Add to my account</span>
             </label>
           </div>
@@ -1775,6 +1794,7 @@ function ProfileWorkspace({
           </div>
         </div>
         <div className="table-list">
+          {bookings.length === 0 && <p className="muted">No upcoming visits.</p>}
           {bookings.map((booking) => {
             const session = sessions.find((item) => item.id === booking.sessionId) ?? { date: "TBC", time: "TBC", typeId: "thermal" };
             return (
@@ -1782,7 +1802,11 @@ function ProfileWorkspace({
                 <span>{getSessionType(session.typeId).name}</span>
                 <span>{session.date} {session.time}</span>
                 <span className={`status ${booking.status}`}>{booking.status}</span>
-                <button className="quiet" onClick={() => cancelBooking(booking.id)}>Cancel</button>
+                {booking.status === "confirmed" || booking.status === "waitlist" ? (
+                  <button className="quiet" onClick={() => cancelBooking(booking.id)}>Cancel</button>
+                ) : (
+                  <span />
+                )}
               </div>
             );
           })}

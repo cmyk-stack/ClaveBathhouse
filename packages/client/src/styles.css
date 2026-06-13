@@ -307,7 +307,7 @@ button.quiet {
   bottom: 0;
   z-index: 6;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
   gap: 6px;
   padding: 10px 12px 14px;
   border-top: 1px solid rgba(38, 32, 25, 0.1);
@@ -432,10 +432,21 @@ button.quiet {
   gap: 12px;
 }
 
-.location-card p {
+.location-card p,
+.location-intro p,
+.booking-context {
   color: #736858;
   line-height: 1.4;
   margin-bottom: 0;
+}
+
+.location-picker {
+  align-content: start;
+}
+
+.location-intro {
+  display: grid;
+  gap: 6px;
 }
 
 .location-photo {
@@ -443,6 +454,31 @@ button.quiet {
   border-radius: 20px;
   background-position: center;
   background-size: cover;
+}
+
+.booking-context {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+  font-size: 0.82rem;
+}
+
+.booking-context button {
+  min-height: 34px;
+  padding: 0.45rem 0.7rem;
+  white-space: nowrap;
+}
+
+.muted {
+  color: #736858;
+  font-size: 0.84rem;
+  line-height: 1.4;
+  margin-bottom: 0;
+}
+
+.session-list .muted {
+  padding: 12px;
 }
 
 .voucher-card {
