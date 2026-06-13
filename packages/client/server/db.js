@@ -140,6 +140,7 @@ export async function ensureSchema() {
   `;
 
   await seedFirstAdmin();
+  await removeLegacyDemoData();
 
   for (const location of seedLocations) {
     await sql`
@@ -149,6 +150,41 @@ export async function ensureSchema() {
     `;
   }
 
+}
+
+async function removeLegacyDemoData() {
+  await sql`
+    DELETE FROM clave_app_state
+    WHERE customer_id IN ('c2', 'c3')
+  `;
+
+  await sql`
+    DELETE FROM clave_bookings
+    WHERE id IN ('b1', 'b2', 'b3')
+      OR customer_id IN ('c2', 'c3')
+      OR customer_id IN (
+        SELECT id
+        FROM clave_customers
+        WHERE lower(email) IN ('jon@example.com', 'mia@example.com')
+      )
+  `;
+
+  await sql`
+    DELETE FROM clave_transactions
+    WHERE booking_id IN ('b1', 'b2', 'b3')
+      OR customer_id IN ('c2', 'c3')
+      OR customer_id IN (
+        SELECT id
+        FROM clave_customers
+        WHERE lower(email) IN ('jon@example.com', 'mia@example.com')
+      )
+  `;
+
+  await sql`
+    DELETE FROM clave_customers
+    WHERE id IN ('c2', 'c3')
+      OR lower(email) IN ('jon@example.com', 'mia@example.com')
+  `;
 }
 
 async function seedFirstAdmin() {
@@ -241,6 +277,8 @@ export async function listCustomers() {
   const result = await sql`
     SELECT id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id
     FROM clave_customers
+    WHERE id NOT IN ('c2', 'c3')
+      AND lower(email) NOT IN ('jon@example.com', 'mia@example.com')
     ORDER BY created_at DESC
   `;
 
@@ -429,17 +467,42 @@ export async function getStoredState(customerId) {
 
   const payload = result.rows[0]?.payload ?? null;
   if (!payload || typeof payload !== "object") return payload;
-  const { notices, ...safePayload } = payload;
-  return safePayload;
+  return sanitizeStoredState(payload);
 }
 
 export async function saveStoredState(customerId, payload) {
+  const safePayload = sanitizeStoredState(payload);
   await sql`
     INSERT INTO clave_app_state (customer_id, payload, updated_at)
-    VALUES (${customerId}, ${JSON.stringify(payload)}::jsonb, NOW())
+    VALUES (${customerId}, ${JSON.stringify(safePayload)}::jsonb, NOW())
     ON CONFLICT (customer_id)
     DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()
   `;
+}
+
+function isLegacyDemoCustomer(customer) {
+  const id = String(customer?.id ?? "").toLowerCase();
+  const email = String(customer?.email ?? "").toLowerCase();
+  return id === "c2" || id === "c3" || email === "jon@example.com" || email === "mia@example.com";
+}
+
+function isLegacyDemoBooking(booking) {
+  const id = String(booking?.id ?? "").toLowerCase();
+  const customerId = String(booking?.customerId ?? booking?.customer_id ?? "").toLowerCase();
+  return id === "b1" || id === "b2" || id === "b3" || customerId === "c2" || customerId === "c3";
+}
+
+function sanitizeStoredState(payload) {
+  if (!payload || typeof payload !== "object") return payload;
+  const { notices, ...safePayload } = payload;
+  return {
+    ...safePayload,
+    bookings: Array.isArray(safePayload.bookings) ? safePayload.bookings.filter((booking) => !isLegacyDemoBooking(booking)) : safePayload.bookings,
+    customers: Array.isArray(safePayload.customers) ? safePayload.customers.filter((customer) => !isLegacyDemoCustomer(customer)) : safePayload.customers,
+    transactions: Array.isArray(safePayload.transactions)
+      ? safePayload.transactions.filter((transaction) => !["b1", "b2", "b3"].includes(String(transaction?.bookingId ?? transaction?.booking_id ?? "").toLowerCase()))
+      : safePayload.transactions
+  };
 }
 
 function datePartsFromStartsAt(startsAt) {
@@ -562,6 +625,9 @@ export async function listBookings({ customerId, role }) {
           SELECT b.id, b.session_id, b.customer_id, c.name AS customer_name, b.status, b.paid_cents, b.payment_id, b.created_at
           FROM clave_bookings b
           JOIN clave_customers c ON c.id = b.customer_id
+          WHERE b.id NOT IN ('b1', 'b2', 'b3')
+            AND b.customer_id NOT IN ('c2', 'c3')
+            AND lower(c.email) NOT IN ('jon@example.com', 'mia@example.com')
           ORDER BY b.created_at DESC
         `
       : await sql`
@@ -569,6 +635,9 @@ export async function listBookings({ customerId, role }) {
           FROM clave_bookings b
           JOIN clave_customers c ON c.id = b.customer_id
           WHERE b.customer_id = ${customerId}
+            AND b.id NOT IN ('b1', 'b2', 'b3')
+            AND b.customer_id NOT IN ('c2', 'c3')
+            AND lower(c.email) NOT IN ('jon@example.com', 'mia@example.com')
           ORDER BY b.created_at DESC
         `;
   return result.rows.map(bookingFromRow);
