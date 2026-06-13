@@ -753,6 +753,11 @@ button.quiet {
   background: #eee0ca;
 }
 
+.session-row:disabled {
+  cursor: default;
+  opacity: 0.64;
+}
+
 .session-row span,
 .attendance-row span,
 .table-row span,

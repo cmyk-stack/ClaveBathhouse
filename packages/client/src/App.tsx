@@ -417,7 +417,7 @@ export function App() {
   const [selectedDate, setSelectedDate] = useState(() => localDateAfter(1));
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState("all");
-  const [selectedSessions, setSelectedSessions] = useState<string[]>(["s2"]);
+  const [selectedSessions, setSelectedSessions] = useState<string[]>([]);
   const [bookingFeedback, setBookingFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [profileName, setProfileName] = useState("Shane Goodhew");
   const [profilePhone, setProfilePhone] = useState("+61 400 100 200");
@@ -778,11 +778,33 @@ export function App() {
       return;
     }
 
+    const visibleSessionIds = new Set(visibleSessions.map((session) => session.id));
+    const validSelectedSessions = selectedSessions.filter((sessionId) => visibleSessionIds.has(sessionId));
+    if (validSelectedSessions.length === 0) {
+      setSelectedSessions([]);
+      setBookingFeedback({ tone: "error", message: "Choose an available session from this location and date." });
+      return;
+    }
+
+    const alreadyBooked = validSelectedSessions.some((sessionId) =>
+      bookings.some(
+        (booking) =>
+          booking.customerId === currentCustomer.id &&
+          booking.sessionId === sessionId &&
+          ["confirmed", "waitlist", "checked-in"].includes(booking.status)
+      )
+    );
+    if (alreadyBooked) {
+      setSelectedSessions([]);
+      setBookingFeedback({ tone: "error", message: "You already have a booking for that session." });
+      return;
+    }
+
     let nextCredits = currentCustomer.credits;
     const createdBookings: Booking[] = [];
     const createdTransactions: Transaction[] = [];
 
-    for (const sessionId of selectedSessions) {
+    for (const sessionId of validSelectedSessions) {
       const session = sessions.find((item) => item.id === sessionId);
       if (!session) continue;
 
@@ -1577,15 +1599,22 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
           {sessions.map((session) => {
             const type = getSessionType(session.typeId);
             const activeCount = activeBookingsFor(session.id, allBookings).length;
+            const bookedByMe = allBookings.some(
+              (booking) =>
+                booking.customerId === currentCustomer.id &&
+                booking.sessionId === session.id &&
+                ["confirmed", "waitlist", "checked-in"].includes(booking.status)
+            );
             const full = activeCount >= session.capacity;
             const selected = selectedSessions.includes(session.id);
 
             return (
               <button
                 className={`session-row ${selected ? "selected" : ""}`}
+                disabled={bookedByMe}
                 key={session.id}
                 onClick={() =>
-                  setSelectedSessions(selected ? selectedSessions.filter((id) => id !== session.id) : [...selectedSessions, session.id])
+                  !bookedByMe && setSelectedSessions(selected ? selectedSessions.filter((id) => id !== session.id) : [...selectedSessions, session.id])
                 }
               >
                 <span>
@@ -1593,7 +1622,7 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
                   <small>{type.name}</small>
                 </span>
                 <span>
-                  <strong>{full ? "Waitlist" : `${session.capacity - activeCount} spots`}</strong>
+                  <strong>{bookedByMe ? "Booked" : full ? "Waitlist" : `${session.capacity - activeCount} spots`}</strong>
                   <small>{formatCurrency(type.price)} · {type.duration} min</small>
                 </span>
               </button>
