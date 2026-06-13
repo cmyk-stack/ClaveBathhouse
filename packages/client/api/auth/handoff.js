@@ -1,5 +1,5 @@
-import { findCustomerById, getStoredState, sendError, sendJson } from ".../server/db.js";
-import { setSessionCookie, verifySessionHandoffToken } from ".../server/security.js";
+import { findCustomerById, getStoredState, sendError, sendJson } from "../../server/db.js";
+import { setSessionCookie, verifySessionHandoffToken } from "../../server/security.js";
 
 export default async function handler(request, response) {
   if (request.method !== "POST") {
