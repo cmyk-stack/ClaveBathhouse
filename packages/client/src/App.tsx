@@ -91,7 +91,6 @@ type PersistedAppState = {
   bookings: Booking[];
   customers: Customer[];
   isAuthenticated: boolean;
-  notices: Notice[];
   selectedCustomerId: string;
   transactions: Transaction[];
   view: AppView;
@@ -457,13 +456,12 @@ export function App() {
       bookings,
       customers,
       isAuthenticated,
-      notices,
       selectedCustomerId,
       transactions,
       view
     };
     window.localStorage.setItem("clave-app-state", JSON.stringify(nextState));
-  }, [bookings, customers, isAuthenticated, notices, selectedCustomerId, transactions, view]);
+  }, [bookings, customers, isAuthenticated, selectedCustomerId, transactions, view]);
 
   useEffect(() => {
     const authParams = new URLSearchParams(window.location.search);
@@ -520,7 +518,6 @@ export function App() {
         bookings,
         customers,
         isAuthenticated,
-        notices,
         selectedCustomerId,
         transactions,
         view
@@ -533,7 +530,7 @@ export function App() {
     }, 650);
 
     return () => window.clearTimeout(syncTimer);
-  }, [bookings, customers, isAuthenticated, isOnline, notices, selectedCustomerId, transactions, view]);
+  }, [bookings, customers, isAuthenticated, isOnline, selectedCustomerId, transactions, view]);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(display-mode: standalone)");
@@ -579,7 +576,7 @@ export function App() {
       return [customer, ...withoutCustomer];
     });
 
-    setNotices(remoteState?.notices ?? []);
+    setNotices([]);
     setTransactions(remoteState?.transactions ?? []);
     setView(remoteState?.view ?? "home");
   }
@@ -1732,7 +1729,7 @@ function ProfileWorkspace({
         </div>
       </section>
 
-      <NotificationRail notices={notices} />
+      {notices.length > 0 && <NotificationRail notices={notices} />}
     </div>
   );
 }

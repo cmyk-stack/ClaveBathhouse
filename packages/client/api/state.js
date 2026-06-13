@@ -1,6 +1,12 @@
 import { ensureSchema, findCustomerById, getStoredState, saveStoredState, sendError, sendJson, upsertCustomer } from "./_db.js";
 import { requireSession } from "./_security.js";
 
+function withoutNotices(state) {
+  if (!state || typeof state !== "object") return state;
+  const { notices: _discardedNotices, ...safeState } = state;
+  return safeState;
+}
+
 export default async function handler(request, response) {
   try {
     const session = requireSession(request, response);
@@ -9,7 +15,7 @@ export default async function handler(request, response) {
 
     if (request.method === "GET") {
       const customerId = session.role === "admin" ? String(request.query.customerId ?? session.customerId) : session.customerId;
-      return sendJson(response, 200, { state: await getStoredState(customerId) });
+      return sendJson(response, 200, { state: withoutNotices(await getStoredState(customerId)) });
     }
 
     if (request.method === "POST") {
@@ -22,7 +28,7 @@ export default async function handler(request, response) {
       const nextCustomer = session.role === "admin" && customer?.id ? customer : { ...storedCustomer, ...customer, id: storedCustomer.id };
       await upsertCustomer(nextCustomer);
       await saveStoredState(nextCustomer.id, {
-        ...state,
+        ...withoutNotices(state),
         isAuthenticated: true,
         selectedCustomerId: nextCustomer.id
       });

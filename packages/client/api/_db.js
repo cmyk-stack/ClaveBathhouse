@@ -498,7 +498,10 @@ export async function getStoredState(customerId) {
     LIMIT 1
   `;
 
-  return result.rows[0]?.payload ?? null;
+  const payload = result.rows[0]?.payload ?? null;
+  if (!payload || typeof payload !== "object") return payload;
+  const { notices, ...safePayload } = payload;
+  return safePayload;
 }
 
 export async function saveStoredState(customerId, payload) {
