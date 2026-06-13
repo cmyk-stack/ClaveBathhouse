@@ -695,6 +695,13 @@ button.quiet {
   margin-bottom: 12px;
 }
 
+.admin-filter-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
 .session-list,
 .table-list,
 .attendance-list,
@@ -952,6 +959,27 @@ small,
   gap: 8px;
 }
 
+.admin-brief,
+.admin-action-list {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-action-list article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid rgba(38, 32, 25, 0.11);
+  border-radius: 14px;
+  background: rgba(255, 252, 246, 0.72);
+}
+
+.admin-action-list small {
+  color: #736858;
+}
+
 .health-row {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -971,6 +999,29 @@ small,
 
 .customer-list {
   grid-template-columns: 1fr;
+}
+
+.payment-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.payment-summary article {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid rgba(38, 32, 25, 0.11);
+  border-radius: 16px;
+  background: rgba(255, 252, 246, 0.72);
+}
+
+.payment-summary span {
+  color: #736858;
+  font-size: 0.7rem;
+  font-weight: 850;
+  text-transform: uppercase;
 }
 
 .customer-list article,

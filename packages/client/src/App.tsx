@@ -438,6 +438,7 @@ export function App() {
   const [healthStatus, setHealthStatus] = useState<HealthResponse | null>(null);
   const [newCapacity, setNewCapacity] = useState(8);
   const [newTypeId, setNewTypeId] = useState("thermal");
+  const [newLocationId, setNewLocationId] = useState("scarborough");
   const [newDate, setNewDate] = useState(() => localDateAfter(4));
   const [newTime, setNewTime] = useState("16:00");
   const [newPractitioner, setNewPractitioner] = useState("Clave Team");
@@ -1019,6 +1020,7 @@ export function App() {
     const session: Session = {
       id: `s${Date.now()}`,
       typeId: newTypeId,
+      locationId: newLocationId,
       date: newDate,
       time: newTime,
       capacity: newCapacity,
@@ -1261,6 +1263,7 @@ export function App() {
                 healthStatus={healthStatus}
                 newCapacity={newCapacity}
                 newDate={newDate}
+                newLocationId={newLocationId}
                 newPractitioner={newPractitioner}
                 newTime={newTime}
                 newTypeId={newTypeId}
@@ -1270,6 +1273,7 @@ export function App() {
                 sessions={sessions}
                 setNewCapacity={setNewCapacity}
                 setNewDate={setNewDate}
+                setNewLocationId={setNewLocationId}
                 setNewPractitioner={setNewPractitioner}
                 setNewTime={setNewTime}
                 setNewTypeId={setNewTypeId}
@@ -1988,6 +1992,7 @@ type AdminWorkspaceProps = {
   healthStatus: HealthResponse | null;
   newCapacity: number;
   newDate: string;
+  newLocationId: string;
   newPractitioner: string;
   newTime: string;
   newTypeId: string;
@@ -1997,6 +2002,7 @@ type AdminWorkspaceProps = {
   sessions: Session[];
   setNewCapacity: (value: number) => void;
   setNewDate: (value: string) => void;
+  setNewLocationId: (value: string) => void;
   setNewPractitioner: (value: string) => void;
   setNewTime: (value: string) => void;
   setNewTypeId: (value: string) => void;
@@ -2018,6 +2024,7 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
     healthStatus,
     newCapacity,
     newDate,
+    newLocationId,
     newPractitioner,
     newTime,
     newTypeId,
@@ -2027,6 +2034,7 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
     sessions,
     setNewCapacity,
     setNewDate,
+    setNewLocationId,
     setNewPractitioner,
     setNewTime,
     setNewTypeId,
@@ -2036,6 +2044,26 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
     updateSession
   } = props;
   const sessionById = new Map(sessions.map((session) => [session.id, session]));
+  const [bookingFilter, setBookingFilter] = useState<BookingStatus | "all">("all");
+  const [bookingSearch, setBookingSearch] = useState("");
+  const [scheduleLocationFilter, setScheduleLocationFilter] = useState("all");
+  const [userSearch, setUserSearch] = useState("");
+  const [userRoleFilter, setUserRoleFilter] = useState<Role | "all">("all");
+  const activeBookings = bookings.filter((booking) => booking.status !== "cancelled");
+  const waitlistBookings = bookings.filter((booking) => booking.status === "waitlist");
+  const checkedInBookings = bookings.filter((booking) => booking.status === "checked-in");
+  const paidTotal = transactions.filter((transaction) => transaction.status === "paid").reduce((sum, transaction) => sum + transaction.amount, 0);
+  const refundedTotal = transactions.filter((transaction) => transaction.status === "refunded").reduce((sum, transaction) => sum + transaction.amount, 0);
+  const filteredSessions = sessions.filter((session) => scheduleLocationFilter === "all" || (session.locationId ?? "scarborough") === scheduleLocationFilter);
+  const filteredBookings = bookings.filter((booking) => {
+    const session = sessionById.get(booking.sessionId);
+    const haystack = `${booking.customerName} ${booking.status} ${session ? `${getSessionType(session.typeId).name} ${session.date} ${session.time}` : booking.sessionId}`.toLowerCase();
+    return (bookingFilter === "all" || booking.status === bookingFilter) && haystack.includes(bookingSearch.trim().toLowerCase());
+  });
+  const filteredCustomers = customers.filter((customer) => {
+    const haystack = `${customer.name} ${customer.email} ${customer.phone} ${customer.role} ${getPlan(customer.membershipId).name}`.toLowerCase();
+    return (userRoleFilter === "all" || customer.role === userRoleFilter) && haystack.includes(userSearch.trim().toLowerCase());
+  });
 
   return (
     <div className="workspace-grid admin-grid">
@@ -2058,20 +2086,45 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
           <section className="metric-band">
             <article>
               <span>Revenue</span>
-              <strong>{formatCurrency(revenue)}</strong>
+              <strong>{formatCurrency(paidTotal)}</strong>
             </article>
             <article>
               <span>Occupancy</span>
               <strong>{Math.round(occupancy * 100)}%</strong>
             </article>
             <article>
-              <span>Bookings</span>
-              <strong>{bookings.filter((booking) => booking.status !== "cancelled").length}</strong>
+              <span>Active bookings</span>
+              <strong>{activeBookings.length}</strong>
             </article>
             <article>
-              <span>Members</span>
-              <strong>{customers.filter((customer) => customer.membershipId !== "drop-in").length}</strong>
+              <span>Waitlist</span>
+              <strong>{waitlistBookings.length}</strong>
             </article>
+          </section>
+
+          <section className="surface admin-brief">
+            <div className="section-head">
+              <div>
+                <p className="eyebrow">Today</p>
+                <h3>Operations queue</h3>
+              </div>
+              <span className="pill">{checkedInBookings.length} checked in</span>
+            </div>
+            <div className="admin-action-list">
+              {waitlistBookings.slice(0, 4).map((booking) => {
+                const session = sessionById.get(booking.sessionId);
+                return (
+                  <article key={booking.id}>
+                    <span>
+                      <strong>{booking.customerName}</strong>
+                      <small>{session ? `${getSessionType(session.typeId).name} ${session.date} ${session.time}` : booking.sessionId}</small>
+                    </span>
+                    <span className="status waitlist">waitlist</span>
+                  </article>
+                );
+              })}
+              {waitlistBookings.length === 0 && <p className="empty-state">No waitlist items need attention.</p>}
+            </div>
           </section>
 
           <section className="surface">
@@ -2110,6 +2163,13 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
           </div>
         </div>
         <form className="session-form" onSubmit={createSession}>
+          <select value={newLocationId} onChange={(event) => setNewLocationId(event.target.value)}>
+            {locations.map((location) => (
+              <option key={location.id} value={location.id}>
+                {location.name}
+              </option>
+            ))}
+          </select>
           <select value={newTypeId} onChange={(event) => setNewTypeId(event.target.value)}>
             {sessionTypes.map((type) => (
               <option key={type.id} value={type.id}>
@@ -2123,9 +2183,26 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
           <input value={newPractitioner} onChange={(event) => setNewPractitioner(event.target.value)} placeholder="Practitioner" />
           <button>Add session</button>
         </form>
+        <div className="admin-filter-row">
+          <select value={scheduleLocationFilter} onChange={(event) => setScheduleLocationFilter(event.target.value)}>
+            <option value="all">All locations</option>
+            {locations.map((location) => (
+              <option key={location.id} value={location.id}>
+                {location.name}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="session-admin-list">
-          {sessions.map((session) => (
+          {filteredSessions.map((session) => (
             <form className="session-admin-row" key={session.id} onSubmit={(event) => updateSession(event, session.id)}>
+              <select defaultValue={session.locationId ?? "scarborough"} name="locationId">
+                {locations.map((location) => (
+                  <option key={location.id} value={location.id}>
+                    {location.name}
+                  </option>
+                ))}
+              </select>
               <select defaultValue={session.typeId} name="typeId">
                 {sessionTypes.map((type) => (
                   <option key={type.id} value={type.id}>
@@ -2137,8 +2214,7 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
               <input defaultValue={session.time} name="time" type="time" />
               <input defaultValue={session.capacity} min={1} name="capacity" type="number" />
               <input defaultValue={session.practitioner} name="practitioner" placeholder="Practitioner" />
-              <input defaultValue={session.locationId ?? "scarborough"} name="locationId" placeholder="Location" />
-              <span>{activeBookingsFor(session.id, bookings).length}/{session.capacity} booked</span>
+              <span>{activeBookingsFor(session.id, bookings).length}/{session.capacity} booked, {waitlistFor(session.id, bookings).length} waitlist</span>
               <button>Save</button>
               <button className="quiet" onClick={() => deleteSession(session.id)} type="button">
                 Remove
@@ -2156,9 +2232,21 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
             <p className="eyebrow">Operations</p>
             <h3>All bookings</h3>
           </div>
+          <span className="pill">{filteredBookings.length} shown</span>
+        </div>
+        <div className="admin-filter-row">
+          <input value={bookingSearch} onChange={(event) => setBookingSearch(event.target.value)} placeholder="Search customer or session" />
+          <select value={bookingFilter} onChange={(event) => setBookingFilter(event.target.value as BookingStatus | "all")}>
+            <option value="all">All statuses</option>
+            <option value="confirmed">Confirmed</option>
+            <option value="waitlist">Waitlist</option>
+            <option value="checked-in">Checked in</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
         </div>
         <div className="table-list">
-          {bookings.map((booking) => (
+          {filteredBookings.length === 0 && <p className="empty-state">No bookings match those filters.</p>}
+          {filteredBookings.map((booking) => (
             <div className="table-row" key={booking.id}>
               <span>{booking.customerName}</span>
               <span>
@@ -2168,7 +2256,9 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
                 })()}
               </span>
               <span className={`status ${booking.status}`}>{booking.status}</span>
-              <button className="quiet" onClick={() => cancelBooking(booking.id)}>Cancel</button>
+              <button className="quiet" disabled={booking.status === "cancelled" || booking.status === "checked-in"} onClick={() => cancelBooking(booking.id)}>
+                Cancel
+              </button>
             </div>
           ))}
         </div>
@@ -2183,10 +2273,21 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
             <h3>Transactions</h3>
           </div>
         </div>
+        <div className="payment-summary">
+          <article>
+            <span>Paid</span>
+            <strong>{formatCurrency(paidTotal)}</strong>
+          </article>
+          <article>
+            <span>Refunded</span>
+            <strong>{formatCurrency(refundedTotal)}</strong>
+          </article>
+        </div>
         <div className="table-list">
           {transactions.map((transaction) => (
             <div className="table-row" key={transaction.id}>
               <span>{transaction.id}</span>
+              <span>{transaction.bookingId}</span>
               <span>{formatCurrency(transaction.amount)}</span>
               <span className={`status ${transaction.status}`}>{transaction.status}</span>
               <button className="quiet" disabled={transaction.status === "refunded"} onClick={() => refund(transaction.id)}>Refund</button>
@@ -2203,14 +2304,26 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
             <p className="eyebrow">Users</p>
             <h3>Customer profiles</h3>
           </div>
+          <span className="pill">{filteredCustomers.length} shown</span>
+        </div>
+        <div className="admin-filter-row">
+          <input value={userSearch} onChange={(event) => setUserSearch(event.target.value)} placeholder="Search name, email, phone" />
+          <select value={userRoleFilter} onChange={(event) => setUserRoleFilter(event.target.value as Role | "all")}>
+            <option value="all">All roles</option>
+            <option value="customer">Customers</option>
+            <option value="staff">Staff</option>
+            <option value="admin">Admins</option>
+          </select>
         </div>
         <div className="customer-list">
-          {customers.map((customer) => (
+          {filteredCustomers.length === 0 && <p className="empty-state">No customers match those filters.</p>}
+          {filteredCustomers.map((customer) => (
             <article key={customer.id}>
               <div>
                 <strong>{customer.name}</strong>
                 <span>{customer.email}</span>
-                <span>{getPlan(customer.membershipId).name}, {customer.credits} credits</span>
+                <span>{customer.phone || "No phone"} · {getPlan(customer.membershipId).name} · {customer.credits} credits</span>
+                <span>{bookings.filter((booking) => booking.customerId === customer.id && booking.status !== "cancelled").length} active bookings</span>
               </div>
               <label className="customer-role-control">
                 <span>Role</span>
