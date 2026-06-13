@@ -481,6 +481,74 @@ button.quiet {
   padding: 12px;
 }
 
+.booking-feedback {
+  border-radius: 14px;
+  font-size: 0.84rem;
+  font-weight: 750;
+  line-height: 1.35;
+  margin-bottom: 0;
+  padding: 10px 12px;
+}
+
+.booking-feedback.success {
+  background: #dde8d4;
+  color: #37532d;
+}
+
+.booking-feedback.error {
+  background: #ecd3c8;
+  color: #7d3e27;
+}
+
+.calendar-card {
+  display: grid;
+  gap: 12px;
+}
+
+.calendar-weekdays,
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.calendar-weekdays span {
+  color: #736858;
+  font-size: 0.66rem;
+  font-weight: 850;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.calendar-day {
+  display: grid;
+  min-height: 42px;
+  place-items: center;
+  border: 1px solid rgba(38, 32, 25, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 252, 246, 0.58);
+  color: #736858;
+  font-size: 0.78rem;
+}
+
+.calendar-day.has-booking {
+  border-color: rgba(92, 69, 49, 0.36);
+  background: #eee0ca;
+  color: #241f19;
+}
+
+.calendar-day span {
+  display: inline-grid;
+  min-width: 18px;
+  min-height: 18px;
+  place-items: center;
+  border-radius: 999px;
+  background: #2b2118;
+  color: #fff8ec;
+  font-size: 0.66rem;
+  font-weight: 850;
+}
+
 .voucher-card {
   display: grid;
   gap: 10px;

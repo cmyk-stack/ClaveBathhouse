@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
-type AppView = "home" | "book" | "locations" | "passes" | "me" | "staff" | "admin";
+type AppView = "home" | "book" | "calendar" | "locations" | "passes" | "me" | "staff" | "admin";
 type AuthMode = "login" | "signup" | "reset" | "reset-complete";
 type AdminTab = "overview" | "schedule" | "bookings" | "users" | "payments";
 type BookingStatus = "confirmed" | "waitlist" | "cancelled" | "checked-in";
@@ -418,6 +418,7 @@ export function App() {
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState("all");
   const [selectedSessions, setSelectedSessions] = useState<string[]>(["s2"]);
+  const [bookingFeedback, setBookingFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [profileName, setProfileName] = useState("Shane Goodhew");
   const [profilePhone, setProfilePhone] = useState("+61 400 100 200");
   const [authName, setAuthName] = useState("Shane Goodhew");
@@ -446,7 +447,7 @@ export function App() {
   const currentPlan = getPlan(currentCustomer.membershipId);
   const canUseStaffTools = currentCustomer.role === "staff" || currentCustomer.role === "admin";
   const canUseAdminTools = currentCustomer.role === "admin";
-  const navItems: AppView[] = ["home", "book", "passes", "me"];
+  const navItems: AppView[] = ["home", "book", "calendar", "passes", "me"];
   if (canUseStaffTools) navItems.push("staff");
   if (canUseAdminTools) navItems.push("admin");
 
@@ -772,6 +773,7 @@ export function App() {
 
   async function handleCheckout() {
     if (selectedSessions.length === 0) {
+      setBookingFeedback({ tone: "error", message: "Choose at least one session before confirming." });
       pushNotice("push", "Choose a time", "Select at least one bathhouse spot before checkout.");
       return;
     }
@@ -830,14 +832,18 @@ export function App() {
         }
         if (latestBookings) setBookings(latestBookings);
         setSelectedSessions([]);
+        setBookingFeedback({ tone: "success", message: "Booking confirmed. Your visit has been saved." });
         pushNotice("email", "Booking confirmation", "Your Clave Bathhouse booking was recorded in Neon.");
         return;
       } catch (error) {
         if (!isStaticPreviewError(error)) {
-          setOperationalMessage(messageFromError(error, "Booking could not be saved in Neon."));
-          pushNotice("sms", "Booking not saved", messageFromError(error, "Booking could not be saved in Neon."));
+          const message = messageFromError(error, "Booking could not be saved in Neon.");
+          setOperationalMessage(message);
+          setBookingFeedback({ tone: "error", message });
+          pushNotice("sms", "Booking not saved", message);
           return;
         }
+        setBookingFeedback({ tone: "success", message: "Booking confirmed locally. It will stay available on this device." });
         pushNotice(
           "sms",
           "Server booking fallback",
@@ -852,6 +858,7 @@ export function App() {
     setTransactions((current) => createdTransactions.concat(current));
     setCustomers((current) => current.map((customer) => (customer.id === currentCustomer.id ? { ...customer, credits: nextCredits } : customer)));
     setSelectedSessions([]);
+    setBookingFeedback({ tone: "success", message: "Booking confirmed. Your visit is ready." });
     pushNotice("email", "Booking confirmation", "Your Clave Bathhouse itinerary and receipt are ready.");
   }
 
@@ -1097,6 +1104,7 @@ export function App() {
     if (nextView === "book") {
       setSelectedLocationId(null);
       setSelectedSessions([]);
+      setBookingFeedback(null);
     }
     setView(nextView);
   }
@@ -1167,6 +1175,7 @@ export function App() {
 
                 {view === "book" && (
               <CustomerWorkspace
+                bookingFeedback={bookingFeedback}
                 currentCustomer={currentCustomer}
                 handleCheckout={handleCheckout}
                 locations={locations}
@@ -1184,6 +1193,10 @@ export function App() {
                 setSelectedType={setSelectedType}
                 allBookings={bookings}
               />
+                )}
+
+                {view === "calendar" && (
+              <CalendarWorkspace bookings={customerActiveBookings} sessions={sessions} />
                 )}
 
                 {view === "passes" && (
@@ -1407,21 +1420,21 @@ function NavIcon({ view }: { view: AppView }) {
   if (view === "book") {
     return (
       <svg {...common}>
+        <path d="M12 21s7-5.2 7-11a7 7 0 0 0-14 0c0 5.8 7 11 7 11Z" />
+        <circle cx="12" cy="10" r="2.5" />
+      </svg>
+    );
+  }
+
+  if (view === "calendar") {
+    return (
+      <svg {...common}>
         <path d="M7 3v3" />
         <path d="M17 3v3" />
         <path d="M4.5 8h15" />
         <rect height="16" rx="3" width="15" x="4.5" y="5" />
         <path d="M9 13h6" />
         <path d="M9 17h3" />
-      </svg>
-    );
-  }
-
-  if (view === "locations") {
-    return (
-      <svg {...common}>
-        <path d="M12 21s7-5.2 7-11a7 7 0 0 0-14 0c0 5.8 7 11 7 11Z" />
-        <circle cx="12" cy="10" r="2.5" />
       </svg>
     );
   }
@@ -1446,6 +1459,7 @@ function NavIcon({ view }: { view: AppView }) {
 
 type CustomerWorkspaceProps = {
   allBookings: Booking[];
+  bookingFeedback: { tone: "success" | "error"; message: string } | null;
   currentCustomer: Customer;
   handleCheckout: () => void;
   locations: Location[];
@@ -1510,6 +1524,7 @@ function HomeWorkspace({
 function CustomerWorkspace(props: CustomerWorkspaceProps) {
   const {
     allBookings,
+    bookingFeedback,
     currentCustomer,
     handleCheckout,
     locations,
@@ -1586,6 +1601,8 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
           })}
         </div>
 
+        {bookingFeedback && <p className={`booking-feedback ${bookingFeedback.tone}`}>{bookingFeedback.message}</p>}
+
         <div className="checkout-bar">
           <div>
             <strong>No payment due</strong>
@@ -1624,6 +1641,78 @@ function LocationsWorkspace({ locations, onSelectLocation }: { locations: Locati
           <button onClick={() => onSelectLocation(location.id)}>Book at this bathhouse</button>
         </section>
       ))}
+    </div>
+  );
+}
+
+function CalendarWorkspace({ bookings, sessions }: { bookings: Booking[]; sessions: Session[] }) {
+  const sessionById = new Map(sessions.map((session) => [session.id, session]));
+  const datedBookings = bookings
+    .map((booking) => ({ booking, session: sessionById.get(booking.sessionId) }))
+    .filter((item): item is { booking: Booking; session: Session } => Boolean(item.session))
+    .sort((a, b) => `${a.session.date}${a.session.time}`.localeCompare(`${b.session.date}${b.session.time}`));
+  const monthSource = datedBookings[0]?.session.date ?? new Date().toISOString().slice(0, 10);
+  const monthDate = new Date(`${monthSource}T00:00:00`);
+  const monthLabel = monthDate.toLocaleDateString("en-AU", { month: "long", year: "numeric" });
+  const firstDay = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+  const daysInMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
+  const startOffset = (firstDay.getDay() + 6) % 7;
+  const calendarCells = [
+    ...Array.from({ length: startOffset }, () => null),
+    ...Array.from({ length: daysInMonth }, (_, index) => index + 1)
+  ];
+
+  function bookingsForDay(day: number) {
+    const date = `${monthSource.slice(0, 8)}${String(day).padStart(2, "0")}`;
+    return datedBookings.filter((item) => item.session.date === date);
+  }
+
+  return (
+    <div className="workspace-grid">
+      <section className="surface calendar-card">
+        <div className="section-head">
+          <div>
+            <p className="eyebrow">Calendar</p>
+            <h3>{monthLabel}</h3>
+          </div>
+          <span className="pill">{datedBookings.length} visits</span>
+        </div>
+        <div className="calendar-weekdays" aria-hidden="true">
+          {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
+            <span key={day}>{day}</span>
+          ))}
+        </div>
+        <div className="calendar-grid">
+          {calendarCells.map((day, index) => {
+            const dayBookings = day ? bookingsForDay(day) : [];
+            return (
+              <div className={`calendar-day ${dayBookings.length ? "has-booking" : ""}`} key={`${day ?? "blank"}-${index}`}>
+                {day && <strong>{day}</strong>}
+                {dayBookings.length > 0 && <span>{dayBookings.length}</span>}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="surface">
+        <div className="section-head">
+          <div>
+            <p className="eyebrow">Agenda</p>
+            <h3>Booked visits</h3>
+          </div>
+        </div>
+        <div className="table-list">
+          {datedBookings.length === 0 && <p className="muted">No booked visits yet.</p>}
+          {datedBookings.map(({ booking, session }) => (
+            <div className="table-row" key={booking.id}>
+              <span>{getSessionType(session.typeId).name}</span>
+              <span>{session.date} {session.time}</span>
+              <span className={`status ${booking.status}`}>{booking.status}</span>
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }
