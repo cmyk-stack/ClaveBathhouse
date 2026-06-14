@@ -1,4 +1,4 @@
-const CACHE_NAME = "clave-pwa-v1";
+const CACHE_NAME = "clave-pwa-v2";
 const APP_SHELL = ["/", "/index.html", "/manifest.webmanifest", "/pwa-icon.svg", "/apple-touch-icon.svg"];
 
 self.addEventListener("install", (event) => {
