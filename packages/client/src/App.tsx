@@ -8,6 +8,7 @@ type PaymentStatus = "paid" | "refunded";
 type Channel = "push" | "email" | "sms";
 type Role = "customer" | "staff" | "admin";
 type VoucherMode = "send" | "credit";
+type BusyAction = "booking" | "cancel" | "check-in" | "profile" | "session" | "payment" | "";
 
 type SessionType = {
   id: string;
@@ -61,6 +62,9 @@ type MembershipPlan = {
 type Transaction = {
   id: string;
   bookingId: string;
+  customerId?: string;
+  customerName?: string;
+  description?: string;
   amount: number;
   status: PaymentStatus;
   method: string;
@@ -102,7 +106,9 @@ type AuthResponse = {
   error?: string;
 };
 
-type ProfileResponse = AuthResponse;
+type ProfileResponse = AuthResponse & {
+  transactions?: Transaction[];
+};
 
 type SessionsResponse = {
   session?: Session;
@@ -112,7 +118,10 @@ type SessionsResponse = {
 type BookingsResponse = {
   booking?: Booking;
   bookings?: Booking[];
+  customer?: Customer;
+  customers?: Customer[];
   message?: string;
+  transactions?: Transaction[];
 };
 
 type CustomersResponse = {
@@ -123,6 +132,7 @@ type CustomersResponse = {
 type VoucherResponse = {
   creditsAdded?: number;
   customer?: Customer;
+  transactions?: Transaction[];
   voucher?: {
     code: string;
   };
@@ -140,6 +150,7 @@ type BootstrapResponse = {
   customers?: Customer[];
   sessions?: Session[];
   state?: Partial<PersistedAppState> | null;
+  transactions?: Transaction[];
 };
 
 type ApiErrorBody = {
@@ -351,7 +362,7 @@ export function App() {
   const [authName, setAuthName] = useState("");
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
-  const [authPhone, setAuthPhone] = useState("+61 400 100 200");
+  const [authPhone, setAuthPhone] = useState("");
   const [authResetToken, setAuthResetToken] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
@@ -361,7 +372,7 @@ export function App() {
   const [syncStatus, setSyncStatus] = useState<"local" | "syncing" | "synced" | "error">("local");
   const [operationalMessage, setOperationalMessage] = useState("");
   const [isLoadingOperations, setIsLoadingOperations] = useState(false);
-  const [busyAction, setBusyAction] = useState<"booking" | "cancel" | "check-in" | "profile" | "session" | "">("");
+  const [busyAction, setBusyAction] = useState<BusyAction>("");
   const [healthStatus, setHealthStatus] = useState<HealthResponse | null>(null);
   const [newCapacity, setNewCapacity] = useState(8);
   const [newTypeId, setNewTypeId] = useState("thermal");
@@ -494,6 +505,25 @@ export function App() {
     setNotices([]);
   }
 
+  function mergeCustomer(customer?: Customer) {
+    if (!customer) return;
+    setCustomers((current) => {
+      const exists = current.some((item) => item.id === customer.id);
+      return exists ? current.map((item) => (item.id === customer.id ? customer : item)) : [customer, ...current];
+    });
+    if (customer.id === selectedCustomerId) {
+      setProfileName(customer.name);
+      setProfilePhone(customer.phone);
+    }
+  }
+
+  function applyOperationalResponse(result: { bookings?: Booking[]; customer?: Customer; customers?: Customer[]; transactions?: Transaction[] }) {
+    if (result.bookings) setBookings(result.bookings);
+    if (result.transactions) setTransactions(result.transactions);
+    if (result.customers) setCustomers(result.customers);
+    else mergeCustomer(result.customer);
+  }
+
   async function loadOperationalData(customer = currentCustomer) {
     setIsLoadingOperations(true);
     setOperationalMessage("");
@@ -506,6 +536,7 @@ export function App() {
       }
       if (result.bookings) setBookings(result.bookings);
       if (customer.role === "admin" && result.customers) setCustomers(result.customers);
+      if (result.transactions) setTransactions(result.transactions);
       setSyncStatus("synced");
     } catch (error) {
       if (isStaticPreviewError(error)) {
@@ -699,17 +730,28 @@ export function App() {
     setOperationalMessage("");
     try {
       let latestBookings: Booking[] | undefined;
+      let creditsUsed = 0;
+      let paidTotal = 0;
+      let waitlisted = 0;
       for (const booking of createdBookings) {
+        const session = sessions.find((item) => item.id === booking.sessionId);
+        const amountCents = session ? Math.round(getSessionType(session.typeId).price * 100) : 0;
         const result = await postJson<BookingsResponse>("/api/bookings", {
-          amountCents: 0,
+          amountCents,
           sessionId: booking.sessionId
         });
+        applyOperationalResponse(result);
+        if (result.booking?.status === "waitlist") waitlisted += 1;
+        if (result.booking?.paymentId === "membership-credit") creditsUsed += 1;
+        if ((result.booking?.paid ?? 0) > 0) paidTotal += result.booking?.paid ?? 0;
         latestBookings = result.bookings;
       }
       if (latestBookings) setBookings(latestBookings);
       setSelectedSessions([]);
-      setBookingFeedback({ tone: "success", message: "Booking confirmed. Your visit has been saved." });
-      pushNotice("email", "Booking confirmation", "Your Clave Bathhouse booking was recorded in Neon.");
+      const paymentNote = paidTotal > 0 ? ` Demo payment approved for ${formatCurrency(paidTotal)}.` : creditsUsed > 0 ? ` ${creditsUsed} credit used.` : "";
+      const waitlistNote = waitlisted > 0 ? ` ${waitlisted} visit${waitlisted > 1 ? "s are" : " is"} on the waitlist.` : "";
+      setBookingFeedback({ tone: "success", message: `Booking saved.${paymentNote}${waitlistNote}` });
+      pushNotice("email", "Booking confirmation", `Your Clave Bathhouse booking was recorded in Neon.${paymentNote}`);
     } catch (error) {
       const message = messageFromError(error, "Booking could not be saved in Neon.");
       setOperationalMessage(message);
@@ -727,6 +769,11 @@ export function App() {
     const session = sessions.find((item) => item.id === target.sessionId);
     if (!session) return;
 
+    if (target.status !== "confirmed" && target.status !== "waitlist") {
+      pushNotice("sms", "Cancellation unavailable", "Only confirmed or waitlisted bookings can be cancelled.");
+      return;
+    }
+
     const sessionStart = new Date(`${session.date}T${session.time}:00`);
     const policyDeadline = new Date();
     if (sessionStart.getTime() - policyDeadline.getTime() < 6 * 60 * 60 * 1000) {
@@ -734,11 +781,15 @@ export function App() {
       return;
     }
 
+    const sessionLabel = `${getSessionType(session.typeId).name} on ${session.date} at ${session.time}`;
+    const confirmed = window.confirm(`Cancel this booking?\n\n${sessionLabel}\n\nThis cannot be undone.`);
+    if (!confirmed) return;
+
     setBusyAction("cancel");
     setOperationalMessage("");
     try {
       const result = await postJson<BookingsResponse>("/api/bookings", { action: "cancel", bookingId });
-      if (result.bookings) setBookings(result.bookings);
+      applyOperationalResponse(result);
     } catch (error) {
       setOperationalMessage(messageFromError(error, "Booking could not be cancelled in Neon."));
       pushNotice("sms", "Cancellation not saved", messageFromError(error, "Booking could not be cancelled in Neon."));
@@ -746,7 +797,8 @@ export function App() {
     } finally {
       setBusyAction("");
     }
-    pushNotice("email", "Booking cancelled", `${target.customerName}'s booking was cancelled and policy rules were applied.`);
+    const refundNote = target.paymentId === "membership-credit" ? " One credit was returned." : target.paid > 0 ? " Demo payment was refunded." : "";
+    pushNotice("email", "Booking cancelled", `${target.customerName}'s booking was cancelled.${refundNote}`);
   }
 
   async function checkIn(bookingId: string) {
@@ -754,7 +806,7 @@ export function App() {
     setOperationalMessage("");
     try {
       const result = await postJson<BookingsResponse>("/api/bookings", { action: "check-in", bookingId });
-      if (result.bookings) setBookings(result.bookings);
+      applyOperationalResponse(result);
     } catch (error) {
       setOperationalMessage(messageFromError(error, "Check-in could not be saved in Neon."));
       pushNotice("sms", "Check-in not saved", messageFromError(error, "Check-in could not be saved in Neon."));
@@ -765,8 +817,26 @@ export function App() {
     pushNotice("push", "Check-in complete", "Attendance has been updated for the bathhouse.");
   }
 
-  function subscribe() {
-    pushNotice("sms", "Memberships need Stripe", "Membership checkout will be enabled with Stripe.");
+  async function subscribe(membershipId: string) {
+    const plan = getPlan(membershipId);
+    if (currentCustomer.membershipId === plan.id) {
+      pushNotice("push", "Plan already active", `${plan.name} is already on your account.`);
+      return;
+    }
+
+    setBusyAction("payment");
+    setOperationalMessage("");
+    try {
+      const result = await postJson<ProfileResponse>("/api/profile", { action: "membership", membershipId: plan.id });
+      if (result.customer) mergeCustomer(result.customer);
+      if (result.transactions) setTransactions(result.transactions);
+      pushNotice("email", "Membership updated", `${plan.name} is active. Demo payment was approved.`);
+    } catch (error) {
+      setOperationalMessage(messageFromError(error, "Membership could not be updated in Neon."));
+      pushNotice("sms", "Membership not saved", messageFromError(error, "Membership could not be updated in Neon."));
+    } finally {
+      setBusyAction("");
+    }
   }
 
   async function buyVoucher(event: FormEvent<HTMLFormElement>) {
@@ -776,6 +846,8 @@ export function App() {
     const mode = String(form.get("mode"));
     const recipientEmail = String(form.get("recipientEmail") ?? "").trim();
 
+    setBusyAction("payment");
+    setOperationalMessage("");
     try {
       const result = await postJson<VoucherResponse>("/api/vouchers", {
         amount,
@@ -783,16 +855,41 @@ export function App() {
         recipientEmail
       });
       if (result.customer) {
-        setCustomers((current) => current.map((customer) => (customer.id === result.customer!.id ? result.customer! : customer)));
+        mergeCustomer(result.customer);
       }
+      if (result.transactions) setTransactions(result.transactions);
       if (mode === "credit") {
-        pushNotice("push", "Credit added", `${result.creditsAdded ?? 1} visit credit added to your account.`);
+        pushNotice("push", "Credit added", `${result.creditsAdded ?? 1} visit credit added to your account. Demo payment approved.`);
       } else {
-        pushNotice("email", "Voucher sent", `Gift voucher ${result.voucher?.code ?? ""} was sent to ${recipientEmail}.`);
+        pushNotice("email", "Voucher sent", `Gift voucher ${result.voucher?.code ?? ""} was sent to ${recipientEmail}. Demo payment approved.`);
       }
       event.currentTarget.reset();
     } catch (error) {
       pushNotice("sms", "Voucher not created", messageFromError(error, "Voucher could not be created."));
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  async function redeemVoucher(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const code = String(form.get("code") ?? "").trim();
+
+    setBusyAction("payment");
+    setOperationalMessage("");
+    try {
+      const result = await postJson<VoucherResponse>("/api/vouchers", {
+        action: "redeem",
+        code
+      });
+      if (result.customer) mergeCustomer(result.customer);
+      pushNotice("push", "Voucher redeemed", `${result.creditsAdded ?? 1} visit credit added to your account.`);
+      event.currentTarget.reset();
+    } catch (error) {
+      pushNotice("sms", "Voucher not redeemed", messageFromError(error, "Voucher code could not be redeemed."));
+    } finally {
+      setBusyAction("");
     }
   }
 
@@ -806,7 +903,7 @@ export function App() {
         phone: profilePhone
       });
       if (result.customer) {
-        applyRemoteSession(result.customer);
+        mergeCustomer(result.customer);
       }
       setSyncStatus("synced");
       pushNotice("push", "Profile saved", "Personal details were updated in Neon.");
@@ -907,8 +1004,28 @@ export function App() {
     }
   }
 
-  function refund() {
-    pushNotice("sms", "Refunds need Stripe", "Refund actions will be enabled with Stripe.");
+  async function refund(transactionId: string) {
+    const transaction = transactions.find((item) => item.id === transactionId);
+    if (!transaction || transaction.status === "refunded") return;
+
+    const confirmed = window.confirm(`Refund ${formatCurrency(transaction.amount)}?\n\nThis will mark the demo payment as refunded.`);
+    if (!confirmed) return;
+
+    setBusyAction("payment");
+    setOperationalMessage("");
+    try {
+      const result = await postJson<{ transaction?: Transaction; transactions?: Transaction[] }>("/api/state", {
+        action: "refund-transaction",
+        transactionId
+      });
+      if (result.transactions) setTransactions(result.transactions);
+      pushNotice("email", "Refund processed", `${transaction.description ?? "Payment"} was refunded in demo mode.`);
+    } catch (error) {
+      setOperationalMessage(messageFromError(error, "Refund could not be saved in Neon."));
+      pushNotice("sms", "Refund not saved", messageFromError(error, "Refund could not be saved in Neon."));
+    } finally {
+      setBusyAction("");
+    }
   }
 
   async function refreshHealth() {
@@ -998,6 +1115,7 @@ export function App() {
                 {view === "book" && (
               <CustomerWorkspace
                 bookingFeedback={bookingFeedback}
+                busyAction={busyAction}
                 currentCustomer={currentCustomer}
                 handleCheckout={handleCheckout}
                 locations={locations}
@@ -1022,12 +1140,19 @@ export function App() {
                 )}
 
                 {view === "passes" && (
-              <PassesWorkspace buyVoucher={buyVoucher} currentCustomer={currentCustomer} subscribe={subscribe} />
+              <PassesWorkspace
+                busyAction={busyAction}
+                buyVoucher={buyVoucher}
+                currentCustomer={currentCustomer}
+                redeemVoucher={redeemVoucher}
+                subscribe={subscribe}
+              />
                 )}
 
                 {view === "me" && (
               <ProfileWorkspace
                 bookings={customerActiveBookings}
+                busyAction={busyAction}
                 cancelBooking={cancelBooking}
                 currentCustomer={currentCustomer}
                 handleSignOut={handleSignOut}
@@ -1052,6 +1177,7 @@ export function App() {
                 {view === "admin" && canUseAdminTools && (
               <AdminWorkspace
                 bookings={bookings}
+                busyAction={busyAction}
                 cancelBooking={cancelBooking}
                 createSession={createSession}
                 adminTab={adminTab}
@@ -1142,7 +1268,7 @@ function AuthWorkspace({
         <h3>{title}</h3>
         <p>
           {authMode === "signup"
-            ? "Save your details, payment method, vouchers, and bathhouse bookings."
+            ? "Save your details, passes, vouchers, and bathhouse bookings."
             : authMode === "reset"
               ? "Enter your account email and we will send a secure reset link."
               : authMode === "reset-complete"
@@ -1284,6 +1410,7 @@ function NavIcon({ view }: { view: AppView }) {
 type CustomerWorkspaceProps = {
   allBookings: Booking[];
   bookingFeedback: { tone: "success" | "error"; message: string } | null;
+  busyAction: BusyAction;
   currentCustomer: Customer;
   handleCheckout: () => void;
   locations: Location[];
@@ -1311,6 +1438,7 @@ function HomeWorkspace({
 }) {
   const nextBooking = bookings.find((booking) => booking.status === "confirmed" || booking.status === "checked-in");
   const nextSession = nextBooking ? sessions.find((session) => session.id === nextBooking.sessionId) : sessions[0];
+  const nextAvailable = sessions[0];
 
   return (
     <div className="workspace-grid">
@@ -1318,14 +1446,19 @@ function HomeWorkspace({
         <div className="section-head">
           <div>
             <p className="eyebrow">Next visit</p>
-            <h3>{nextSession ? getSessionType(nextSession.typeId).name : "No booking yet"}</h3>
+            <h3>{nextBooking && nextSession ? getSessionType(nextSession.typeId).name : "No booking yet"}</h3>
           </div>
           <span className="pill">{currentCustomer.credits} credits</span>
         </div>
-        {nextSession && (
+        {nextBooking && nextSession ? (
           <div className="visit-card">
             <strong>{nextSession.date} at {nextSession.time}</strong>
             <span>{nextSession.capacity - activeBookingsFor(nextSession.id, bookings).length} spots still open</span>
+          </div>
+        ) : (
+          <div className="visit-card">
+            <strong>Ready when you are</strong>
+            <span>{nextAvailable ? `Next sessions start ${nextAvailable.date}` : "Sessions will appear here once the timetable is published."}</span>
           </div>
         )}
         <button onClick={() => setView("book")}>Book visit</button>
@@ -1349,6 +1482,7 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
   const {
     allBookings,
     bookingFeedback,
+    busyAction,
     currentCustomer,
     handleCheckout,
     locations,
@@ -1364,6 +1498,19 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
   } = props;
 
   const selectedLocation = locations.find((location) => location.id === selectedLocationId);
+  const selectedSessionDetails = selectedSessions
+    .map((sessionId) => sessions.find((session) => session.id === sessionId))
+    .filter((session): session is Session => Boolean(session));
+  const selectedDue = selectedSessionDetails.reduce((sum, session, index) => {
+    const full = activeBookingsFor(session.id, allBookings).length >= session.capacity;
+    if (full || index < currentCustomer.credits) return sum;
+    return sum + getSessionType(session.typeId).price;
+  }, 0);
+  const creditsApplied = Math.min(
+    currentCustomer.credits,
+    selectedSessionDetails.filter((session) => activeBookingsFor(session.id, allBookings).length < session.capacity).length
+  );
+  const waitlistSelected = selectedSessionDetails.filter((session) => activeBookingsFor(session.id, allBookings).length >= session.capacity).length;
 
   if (!selectedLocation) {
     return <LocationsWorkspace locations={locations} onSelectLocation={setSelectedLocationId} />;
@@ -1397,7 +1544,7 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
         </div>
 
         <div className="session-list">
-          {sessions.length === 0 && <p className="muted">No sessions match this location and date.</p>}
+          {sessions.length === 0 && <p className="muted">No sessions match this location and date. Try another date or location.</p>}
           {sessions.map((session) => {
             const type = getSessionType(session.typeId);
             const activeCount = activeBookingsFor(session.id, allBookings).length;
@@ -1425,7 +1572,7 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
                 </span>
                 <span>
                   <strong>{bookedByMe ? "Booked" : full ? "Waitlist" : `${session.capacity - activeCount} spots`}</strong>
-                  <small>{formatCurrency(type.price)} · {type.duration} min</small>
+                  <small>{formatCurrency(type.price)} - {type.duration} min</small>
                 </span>
               </button>
             );
@@ -1436,10 +1583,16 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
 
         <div className="checkout-bar">
           <div>
-            <strong>No payment due</strong>
-            <p>{selectedSessions.length} selected</p>
+            <strong>{selectedDue > 0 ? `${formatCurrency(selectedDue)} demo payment` : creditsApplied > 0 ? "Credit will be used" : "No charge today"}</strong>
+            <p>
+              {selectedSessions.length} selected
+              {creditsApplied > 0 ? ` - ${creditsApplied} credit${creditsApplied > 1 ? "s" : ""}` : ""}
+              {waitlistSelected > 0 ? ` - ${waitlistSelected} waitlist` : ""}
+            </p>
           </div>
-          <button onClick={handleCheckout}>Confirm</button>
+          <button disabled={busyAction === "booking" || selectedSessions.length === 0} onClick={handleCheckout}>
+            {busyAction === "booking" ? "Saving" : "Confirm"}
+          </button>
         </div>
       </section>
     </div>
@@ -1549,13 +1702,17 @@ function CalendarWorkspace({ bookings, sessions }: { bookings: Booking[]; sessio
 }
 
 function PassesWorkspace({
+  busyAction,
   buyVoucher,
   currentCustomer,
+  redeemVoucher,
   subscribe
 }: {
+  busyAction: BusyAction;
   buyVoucher: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   currentCustomer: Customer;
-  subscribe: () => void;
+  redeemVoucher: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  subscribe: (membershipId: string) => void;
 }) {
   const [voucherMode, setVoucherMode] = useState<VoucherMode>("send");
 
@@ -1580,8 +1737,8 @@ function PassesWorkspace({
               <strong>{plan.name}</strong>
               <span>{formatCurrency(plan.price)} / month</span>
               <p>{plan.credits} bathhouse credits renewed automatically.</p>
-              <button disabled onClick={subscribe}>
-                {currentCustomer.membershipId === plan.id ? "Current" : "Stripe required"}
+              <button disabled={currentCustomer.membershipId === plan.id || busyAction === "payment"} onClick={() => subscribe(plan.id)}>
+                {currentCustomer.membershipId === plan.id ? "Current" : busyAction === "payment" ? "Saving" : plan.price > 0 ? "Activate" : "Switch"}
               </button>
             </article>
           ))}
@@ -1616,7 +1773,20 @@ function PassesWorkspace({
               <span>Add to my account</span>
             </label>
           </div>
-          <button>Buy voucher</button>
+          <button disabled={busyAction === "payment"}>{busyAction === "payment" ? "Saving" : "Buy voucher"}</button>
+        </form>
+      </section>
+
+      <section className="surface voucher-card">
+        <p className="eyebrow">Redeem</p>
+        <h3>Add voucher credit</h3>
+        <p>Enter a voucher code to add visit credit to this account.</p>
+        <form className="voucher-actions" onSubmit={redeemVoucher}>
+          <label className="voucher-value">
+            Voucher code
+            <input autoComplete="off" name="code" placeholder="CLAVE-ABC123-XY12" required />
+          </label>
+          <button disabled={busyAction === "payment"}>{busyAction === "payment" ? "Saving" : "Redeem voucher"}</button>
         </form>
       </section>
     </div>
@@ -1625,6 +1795,7 @@ function PassesWorkspace({
 
 function ProfileWorkspace({
   bookings,
+  busyAction,
   cancelBooking,
   currentCustomer,
   handleSignOut,
@@ -1643,6 +1814,7 @@ function ProfileWorkspace({
   syncStatus
 }: {
   bookings: Booking[];
+  busyAction: BusyAction;
   cancelBooking: (bookingId: string) => void;
   currentCustomer: Customer;
   handleSignOut: () => void;
@@ -1725,7 +1897,9 @@ function ProfileWorkspace({
                 <span>{session.date} {session.time}</span>
                 <span className={`status ${booking.status}`}>{booking.status}</span>
                 {booking.status === "confirmed" || booking.status === "waitlist" ? (
-                  <button className="quiet" onClick={() => cancelBooking(booking.id)}>Cancel</button>
+                  <button className="quiet" disabled={busyAction === "cancel"} onClick={() => cancelBooking(booking.id)}>
+                    {busyAction === "cancel" ? "Cancelling" : "Cancel"}
+                  </button>
                 ) : (
                   <span />
                 )}
@@ -1784,6 +1958,7 @@ function StaffWorkspace({ bookings, checkIn, sessions }: { bookings: Booking[]; 
 type AdminWorkspaceProps = {
   adminTab: AdminTab;
   bookings: Booking[];
+  busyAction: BusyAction;
   cancelBooking: (bookingId: string) => void;
   createSession: (event: FormEvent<HTMLFormElement>) => void;
   currentCustomerId: string;
@@ -1797,7 +1972,7 @@ type AdminWorkspaceProps = {
   newTime: string;
   newTypeId: string;
   occupancy: number;
-  refund: () => void;
+  refund: (transactionId: string) => void;
   refreshHealth: () => void;
   sessions: Session[];
   setNewCapacity: (value: number) => void;
@@ -1816,6 +1991,7 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
   const {
     adminTab,
     bookings,
+    busyAction,
     cancelBooking,
     createSession,
     currentCustomerId,
@@ -2057,8 +2233,8 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
                 })()}
               </span>
               <span className={`status ${booking.status}`}>{booking.status}</span>
-              <button className="quiet" disabled={booking.status === "cancelled" || booking.status === "checked-in"} onClick={() => cancelBooking(booking.id)}>
-                Cancel
+              <button className="quiet" disabled={busyAction === "cancel" || booking.status === "cancelled" || booking.status === "checked-in"} onClick={() => cancelBooking(booking.id)}>
+                {busyAction === "cancel" ? "Cancelling" : "Cancel"}
               </button>
             </div>
           ))}
@@ -2085,13 +2261,19 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
           </article>
         </div>
         <div className="table-list">
+          {transactions.length === 0 && <p className="empty-state">No demo payments have been recorded yet.</p>}
           {transactions.map((transaction) => (
             <div className="table-row" key={transaction.id}>
-              <span>{transaction.id}</span>
-              <span>{transaction.bookingId}</span>
+              <span>
+                <strong>{transaction.description ?? "Payment"}</strong>
+                <small>{transaction.customerName ?? transaction.customerId ?? "Customer"}</small>
+              </span>
+              <span>{transaction.method}</span>
               <span>{formatCurrency(transaction.amount)}</span>
               <span className={`status ${transaction.status}`}>{transaction.status}</span>
-              <button className="quiet" disabled onClick={refund}>Stripe required</button>
+              <button className="quiet" disabled={busyAction === "payment" || transaction.status === "refunded"} onClick={() => refund(transaction.id)}>
+                {transaction.status === "refunded" ? "Refunded" : busyAction === "payment" ? "Saving" : "Refund"}
+              </button>
             </div>
           ))}
         </div>
@@ -2123,7 +2305,7 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
               <div>
                 <strong>{customer.name}</strong>
                 <span>{customer.email}</span>
-                <span>{customer.phone || "No phone"} · {getPlan(customer.membershipId).name} · {customer.credits} credits</span>
+                <span>{customer.phone || "No phone"} - {getPlan(customer.membershipId).name} - {customer.credits} credits</span>
                 <span>{bookings.filter((booking) => booking.customerId === customer.id && booking.status !== "cancelled").length} active bookings</span>
               </div>
               <label className="customer-role-control">
@@ -2149,13 +2331,13 @@ function NotificationRail({ notices }: { notices: Notice[] }) {
       <div className="section-head">
         <div>
           <p className="eyebrow">Notifications</p>
-          <h3>Delivery log</h3>
+          <h3>Recent updates</h3>
         </div>
       </div>
       <div className="notice-list">
         {notices.map((notice) => (
           <article key={notice.id}>
-            <span className="channel">{notice.channel}</span>
+            <span className="channel">{notice.channel === "push" ? "app" : notice.channel}</span>
             <strong>{notice.title}</strong>
             <p>{notice.body}</p>
           </article>

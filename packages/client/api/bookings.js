@@ -6,6 +6,8 @@ import {
   findCustomerById,
   findSessionById,
   listBookings,
+  listCustomers,
+  listTransactions,
   sendError,
   sendJson
 } from "../server/db.js";
@@ -19,7 +21,10 @@ export default async function handler(request, response) {
     await ensureSchema();
 
     if (request.method === "GET") {
-      return sendJson(response, 200, { bookings: await listBookings({ customerId: session.customerId, role: session.role }) });
+      return sendJson(response, 200, {
+        bookings: await listBookings({ customerId: session.customerId, role: session.role }),
+        transactions: await listTransactions({ customerId: session.customerId, role: session.role })
+      });
     }
 
     if (request.method === "POST") {
@@ -27,14 +32,20 @@ export default async function handler(request, response) {
 
       if (action === "cancel") {
         const booking = await cancelBookingRecord({ bookingId, session, role: session.role });
-        if (!booking) return sendJson(response, 404, { error: "not_found", message: "Booking was not found." });
+        if (!booking) return sendJson(response, 409, { error: "not_cancellable", message: "That booking is already cancelled or cannot be cancelled." });
         const customer = await findCustomerById(booking.customerId);
         await sendTransactionalEmail({
           subject: "Clave Bathhouse booking cancelled",
           text: `Your booking ${booking.id} has been cancelled.`,
           to: customer?.email
         });
-        return sendJson(response, 200, { booking, bookings: await listBookings({ customerId: session.customerId, role: session.role }) });
+        return sendJson(response, 200, {
+          booking,
+          bookings: await listBookings({ customerId: session.customerId, role: session.role }),
+          customer: await findCustomerById(booking.customerId),
+          customers: session.role === "admin" ? await listCustomers() : undefined,
+          transactions: await listTransactions({ customerId: session.customerId, role: session.role })
+        });
       }
 
       if (action === "check-in") {
@@ -49,7 +60,11 @@ export default async function handler(request, response) {
           text: `You have been checked in for booking ${booking.id}.`,
           to: customer?.email
         });
-        return sendJson(response, 200, { booking, bookings: await listBookings({ customerId: session.customerId, role: session.role }) });
+        return sendJson(response, 200, {
+          booking,
+          bookings: await listBookings({ customerId: session.customerId, role: session.role }),
+          transactions: await listTransactions({ customerId: session.customerId, role: session.role })
+        });
       }
 
       const customer = await findCustomerById(session.customerId);
@@ -70,7 +85,12 @@ export default async function handler(request, response) {
         to: customer.email
       });
 
-      return sendJson(response, 201, { booking, bookings: await listBookings({ customerId: session.customerId, role: session.role }) });
+      return sendJson(response, 201, {
+        booking,
+        bookings: await listBookings({ customerId: session.customerId, role: session.role }),
+        customer: await findCustomerById(customer.id),
+        transactions: await listTransactions({ customerId: session.customerId, role: session.role })
+      });
     }
 
     response.setHeader("Allow", "GET, POST");

@@ -1,4 +1,4 @@
-import { addCustomerCredits, createVoucherRecord, ensureSchema, findCustomerById, sendError, sendJson } from "../server/db.js";
+import { addCustomerCredits, createVoucherRecord, ensureSchema, findCustomerById, listTransactions, redeemVoucherRecord, sendError, sendJson } from "../server/db.js";
 import { sendTransactionalEmail } from "../server/email.js";
 import { requireSession } from "../server/security.js";
 
@@ -12,6 +12,18 @@ export default async function handler(request, response) {
     const session = requireSession(request, response);
     if (!session) return;
     await ensureSchema();
+
+    if (request.body?.action === "redeem") {
+      const code = String(request.body?.code ?? "").trim();
+      if (!code) return sendJson(response, 400, { error: "bad_request", message: "Enter a voucher code." });
+
+      const result = await redeemVoucherRecord({ code, customerId: session.customerId });
+      if (!result) {
+        return sendJson(response, 409, { error: "voucher_not_redeemable", message: "That voucher code is invalid or has already been redeemed." });
+      }
+
+      return sendJson(response, 200, result);
+    }
 
     const amountCents = Math.round(Number(request.body?.amount ?? 0) * 100);
     const mode = request.body?.mode === "credit" ? "credit" : "send";
@@ -40,12 +52,20 @@ export default async function handler(request, response) {
         text: `You have received a Clave Bathhouse gift voucher.\n\nValue: $${(amountCents / 100).toFixed(2)}\nCode: ${voucher.code}\n\nUse this code when booking or show it at reception.`,
         to: recipientEmail
       });
-      return sendJson(response, 201, { voucher });
+      return sendJson(response, 201, {
+        transactions: await listTransactions({ customerId: session.customerId, role: session.role }),
+        voucher
+      });
     }
 
     const credits = Math.max(1, Math.floor(amountCents / 5800));
     const updatedCustomer = await addCustomerCredits({ credits, customerId: customer.id });
-    return sendJson(response, 201, { creditsAdded: credits, customer: updatedCustomer, voucher });
+    return sendJson(response, 201, {
+      creditsAdded: credits,
+      customer: updatedCustomer,
+      transactions: await listTransactions({ customerId: session.customerId, role: session.role }),
+      voucher
+    });
   } catch (error) {
     return sendError(response, error);
   }

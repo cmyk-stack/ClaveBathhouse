@@ -334,12 +334,52 @@ export async function addCustomerCredits({ credits, customerId }) {
   return result.rows[0] ? customerFromRow(result.rows[0]) : null;
 }
 
+export async function updateCustomerMembership({ amountCents, credits, customerId, membershipId }) {
+  const transactionId = amountCents > 0 ? `txn-${crypto.randomUUID()}` : null;
+  const result = await sql`
+    WITH updated AS (
+      UPDATE clave_customers
+      SET
+        membership_id = ${membershipId},
+        credits = GREATEST(credits, ${credits}),
+        payment_method = CASE WHEN ${amountCents} > 0 THEN 'Demo approved' ELSE payment_method END
+      WHERE id = ${customerId}
+      RETURNING id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id
+    ),
+    transaction_insert AS (
+      INSERT INTO clave_transactions (id, booking_id, customer_id, amount_cents, status, provider, provider_id)
+      SELECT ${transactionId}, ${`membership-${membershipId}`}, id, ${amountCents}, 'paid', 'demo', ${transactionId}
+      FROM updated
+      WHERE ${amountCents} > 0
+      ON CONFLICT (id) DO NOTHING
+      RETURNING id
+    )
+    SELECT *
+    FROM updated
+  `;
+
+  return result.rows[0] ? customerFromRow(result.rows[0]) : null;
+}
+
 export async function createVoucherRecord({ amountCents, purchaserCustomerId, recipientEmail }) {
+  const voucherId = `v-${crypto.randomUUID()}`;
+  const transactionId = `txn-${crypto.randomUUID()}`;
   const code = `CLAVE-${Math.random().toString(36).slice(2, 8).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
   const result = await sql`
-    INSERT INTO clave_vouchers (id, code, purchaser_customer_id, recipient_email, amount_cents)
-    VALUES (${`v-${crypto.randomUUID()}`}, ${code}, ${purchaserCustomerId}, ${recipientEmail || null}, ${amountCents})
-    RETURNING id, code, recipient_email, amount_cents, status, created_at
+    WITH voucher_insert AS (
+      INSERT INTO clave_vouchers (id, code, purchaser_customer_id, recipient_email, amount_cents)
+      VALUES (${voucherId}, ${code}, ${purchaserCustomerId}, ${recipientEmail || null}, ${amountCents})
+      RETURNING id, code, purchaser_customer_id, recipient_email, amount_cents, status, created_at
+    ),
+    transaction_insert AS (
+      INSERT INTO clave_transactions (id, booking_id, customer_id, amount_cents, status, provider, provider_id)
+      SELECT ${transactionId}, ${`voucher-${voucherId}`}, purchaser_customer_id, amount_cents, 'paid', 'demo', ${transactionId}
+      FROM voucher_insert
+      ON CONFLICT (id) DO NOTHING
+      RETURNING id
+    )
+    SELECT id, code, recipient_email, amount_cents, status, created_at
+    FROM voucher_insert
   `;
 
   const voucher = result.rows[0];
@@ -353,6 +393,70 @@ export async function createVoucherRecord({ amountCents, purchaserCustomerId, re
         status: voucher.status
       }
     : null;
+}
+
+export async function redeemVoucherRecord({ code, customerId }) {
+  const result = await sql`
+    WITH redeemed AS (
+      UPDATE clave_vouchers
+      SET
+        status = 'redeemed',
+        redeemed_at = NOW()
+      WHERE upper(code) = upper(${code})
+        AND status = 'issued'
+      RETURNING id, code, recipient_email, amount_cents, status, created_at
+    ),
+    credited AS (
+      UPDATE clave_customers
+      SET credits = credits + GREATEST(1, floor((SELECT amount_cents FROM redeemed) / 5800.0)::int)
+      WHERE id = ${customerId}
+        AND EXISTS (SELECT 1 FROM redeemed)
+      RETURNING id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id
+    )
+    SELECT
+      redeemed.id,
+      redeemed.code,
+      redeemed.recipient_email,
+      redeemed.amount_cents,
+      redeemed.status,
+      redeemed.created_at,
+      credited.id AS customer_id,
+      credited.name,
+      credited.email,
+      credited.phone,
+      credited.membership_id,
+      credited.credits,
+      credited.payment_method,
+      credited.role,
+      credited.stripe_customer_id
+    FROM redeemed
+    JOIN credited ON true
+  `;
+
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    customer: customerFromRow({
+      id: row.customer_id,
+      name: row.name,
+      email: row.email,
+      phone: row.phone,
+      membership_id: row.membership_id,
+      credits: row.credits,
+      payment_method: row.payment_method,
+      role: row.role,
+      stripe_customer_id: row.stripe_customer_id
+    }),
+    creditsAdded: Math.max(1, Math.floor(Number(row.amount_cents ?? 0) / 5800)),
+    voucher: {
+      amountCents: row.amount_cents,
+      code: row.code,
+      createdAt: row.created_at,
+      id: row.id,
+      recipientEmail: row.recipient_email,
+      status: row.status
+    }
+  };
 }
 
 export async function countAdmins() {
@@ -560,6 +664,69 @@ export function bookingFromRow(row) {
   };
 }
 
+function transactionDescription(reference) {
+  if (!reference) return "Payment";
+  if (reference.startsWith("membership-")) return "Membership";
+  if (reference.startsWith("voucher-")) return "Gift voucher";
+  if (reference.startsWith("account-credit-")) return "Account credit";
+  return "Booking";
+}
+
+export function transactionFromRow(row) {
+  return {
+    id: row.id,
+    bookingId: row.booking_id ?? "",
+    customerId: row.customer_id ?? undefined,
+    customerName: row.customer_name ?? undefined,
+    amount: Number(row.amount_cents ?? 0) / 100,
+    status: row.status === "refunded" ? "refunded" : "paid",
+    method: row.provider === "demo" ? "Demo approved" : row.provider,
+    date: row.created_at,
+    description: transactionDescription(row.booking_id ?? "")
+  };
+}
+
+export async function listTransactions({ customerId, role }) {
+  const result =
+    role === "staff" || role === "admin"
+      ? await sql`
+          SELECT t.id, t.booking_id, t.customer_id, c.name AS customer_name, t.amount_cents, t.status, t.provider, t.provider_id, t.created_at
+          FROM clave_transactions t
+          LEFT JOIN clave_customers c ON c.id = t.customer_id
+          WHERE (t.customer_id IS NULL OR t.customer_id NOT IN ('c2', 'c3'))
+            AND (c.email IS NULL OR lower(c.email) NOT IN ('jon@example.com', 'mia@example.com'))
+          ORDER BY t.created_at DESC
+        `
+      : await sql`
+          SELECT t.id, t.booking_id, t.customer_id, c.name AS customer_name, t.amount_cents, t.status, t.provider, t.provider_id, t.created_at
+          FROM clave_transactions t
+          LEFT JOIN clave_customers c ON c.id = t.customer_id
+          WHERE t.customer_id = ${customerId}
+            AND t.customer_id NOT IN ('c2', 'c3')
+            AND (c.email IS NULL OR lower(c.email) NOT IN ('jon@example.com', 'mia@example.com'))
+          ORDER BY t.created_at DESC
+        `;
+
+  return result.rows.map(transactionFromRow);
+}
+
+export async function refundTransactionRecord({ transactionId }) {
+  const result = await sql`
+    WITH updated AS (
+      UPDATE clave_transactions
+      SET status = 'refunded'
+      WHERE id = ${transactionId}
+        AND status = 'paid'
+      RETURNING id, booking_id, customer_id, amount_cents, status, provider, provider_id, created_at
+    )
+    SELECT updated.*, c.name AS customer_name
+    FROM updated
+    LEFT JOIN clave_customers c ON c.id = updated.customer_id
+  `;
+
+  return result.rows[0] ? transactionFromRow(result.rows[0]) : null;
+}
+
 export async function listSessions() {
   const result = await sql`
     SELECT id, location_id, type_id, starts_at, capacity, practitioner
@@ -656,9 +823,16 @@ export async function listBookings({ customerId, role }) {
 
 export async function createBookingRecord({ customer, sessionId, amountCents }) {
   const id = `b${Date.now()}-${sessionId}`;
+  const transactionId = amountCents > 0 ? `txn-${crypto.randomUUID()}` : null;
   const result = await sql`
     WITH locked AS (
       SELECT pg_advisory_xact_lock(hashtext(${sessionId})) AS lock
+    ),
+    customer_balance AS (
+      SELECT id, credits
+      FROM clave_customers
+      WHERE id = ${customer.id}
+      FOR UPDATE
     ),
     target_session AS (
       SELECT id, capacity
@@ -687,11 +861,42 @@ export async function createBookingRecord({ customer, sessionId, amountCents }) 
         target_session.id,
         ${customer.id},
         CASE WHEN active_count.total >= target_session.capacity THEN 'waitlist' ELSE 'confirmed' END,
-        CASE WHEN active_count.total >= target_session.capacity THEN 0 ELSE ${amountCents} END,
-        CASE WHEN active_count.total >= target_session.capacity THEN NULL ELSE ${amountCents > 0 ? `txn-${Date.now()}-${sessionId}` : "membership-credit"} END
-      FROM locked, target_session, active_count
+        CASE
+          WHEN active_count.total >= target_session.capacity THEN 0
+          WHEN customer_balance.credits > 0 THEN 0
+          ELSE ${Math.max(0, Number(amountCents) || 0)}
+        END,
+        CASE
+          WHEN active_count.total >= target_session.capacity THEN NULL
+          WHEN customer_balance.credits > 0 THEN 'membership-credit'
+          WHEN ${Math.max(0, Number(amountCents) || 0)} > 0 THEN ${transactionId}
+          ELSE NULL
+        END
+      FROM locked, target_session, active_count, customer_balance
       WHERE NOT EXISTS (SELECT 1 FROM existing_booking)
       RETURNING id, session_id, customer_id, status, paid_cents, payment_id, created_at
+    ),
+    credit_update AS (
+      UPDATE clave_customers
+      SET credits = GREATEST(credits - 1, 0)
+      WHERE id = ${customer.id}
+        AND EXISTS (
+          SELECT 1
+          FROM inserted
+          WHERE status = 'confirmed'
+            AND payment_id = 'membership-credit'
+        )
+      RETURNING id
+    ),
+    transaction_insert AS (
+      INSERT INTO clave_transactions (id, booking_id, customer_id, amount_cents, status, provider, provider_id)
+      SELECT payment_id, id, customer_id, paid_cents, 'paid', 'demo', payment_id
+      FROM inserted
+      WHERE status = 'confirmed'
+        AND paid_cents > 0
+        AND payment_id IS NOT NULL
+      ON CONFLICT (id) DO NOTHING
+      RETURNING id
     )
     SELECT inserted.*, ${customer.name} AS customer_name
     FROM inserted
@@ -704,22 +909,29 @@ export async function cancelBookingRecord({ bookingId, session, role }) {
   const targetResult =
     role === "admin" || role === "staff"
       ? await sql`
-          SELECT b.id, b.session_id, b.customer_id, c.name AS customer_name, b.status, b.paid_cents, b.payment_id, b.created_at
+          SELECT b.id, b.session_id, b.customer_id, c.name AS customer_name, b.status, b.paid_cents, b.payment_id, b.created_at, s.starts_at
           FROM clave_bookings b
           JOIN clave_customers c ON c.id = b.customer_id
+          JOIN clave_sessions s ON s.id = b.session_id
           WHERE b.id = ${bookingId}
           LIMIT 1
         `
       : await sql`
-          SELECT b.id, b.session_id, b.customer_id, c.name AS customer_name, b.status, b.paid_cents, b.payment_id, b.created_at
+          SELECT b.id, b.session_id, b.customer_id, c.name AS customer_name, b.status, b.paid_cents, b.payment_id, b.created_at, s.starts_at
           FROM clave_bookings b
           JOIN clave_customers c ON c.id = b.customer_id
+          JOIN clave_sessions s ON s.id = b.session_id
           WHERE b.id = ${bookingId} AND b.customer_id = ${session.customerId}
           LIMIT 1
         `;
 
   const target = targetResult.rows[0];
   if (!target) return null;
+  if (role !== "admin" && role !== "staff" && new Date(target.starts_at).getTime() - Date.now() < 6 * 60 * 60 * 1000) {
+    const error = new Error("This booking is inside the six hour cancellation window.");
+    error.code = "cancel_window_closed";
+    throw error;
+  }
 
   const cancelledResult = await sql`
     WITH locked AS (
@@ -730,7 +942,30 @@ export async function cancelBookingRecord({ bookingId, session, role }) {
       SET status = 'cancelled'
       FROM locked
       WHERE id = ${bookingId}
+        AND status IN ('confirmed', 'waitlist')
       RETURNING id, session_id, customer_id, status, paid_cents, payment_id, created_at
+    ),
+    credit_update AS (
+      UPDATE clave_customers
+      SET credits = credits + 1
+      WHERE id = (
+        SELECT customer_id
+        FROM cancelled
+        WHERE payment_id = 'membership-credit'
+        LIMIT 1
+      )
+      RETURNING id
+    ),
+    transaction_update AS (
+      UPDATE clave_transactions
+      SET status = 'refunded'
+      WHERE booking_id = (
+        SELECT id
+        FROM cancelled
+        LIMIT 1
+      )
+        AND status = 'paid'
+      RETURNING id
     ),
     promoted AS (
       UPDATE clave_bookings
@@ -780,6 +1015,14 @@ export function sendError(response, error) {
   if (error?.code === "session_has_bookings") {
     response.status(409).json({
       error: "session_has_bookings",
+      message: error.message
+    });
+    return;
+  }
+
+  if (error?.code === "cancel_window_closed") {
+    response.status(409).json({
+      error: "cancel_window_closed",
       message: error.message
     });
     return;

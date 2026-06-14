@@ -1,4 +1,17 @@
-import { ensureSchema, findCustomerById, getStoredState, listBookings, listCustomers, listSessions, saveStoredState, sendError, sendJson, upsertCustomer } from "../server/db.js";
+import {
+  ensureSchema,
+  findCustomerById,
+  getStoredState,
+  listBookings,
+  listCustomers,
+  listSessions,
+  listTransactions,
+  refundTransactionRecord,
+  saveStoredState,
+  sendError,
+  sendJson,
+  upsertCustomer
+} from "../server/db.js";
 import { requireSession } from "../server/security.js";
 
 function withoutNotices(state) {
@@ -19,12 +32,30 @@ export default async function handler(request, response) {
         bookings: await listBookings({ customerId: session.customerId, role: session.role }),
         customers: session.role === "admin" ? await listCustomers() : undefined,
         sessions: await listSessions(),
+        transactions: await listTransactions({ customerId: session.customerId, role: session.role }),
         state: withoutNotices(await getStoredState(customerId))
       });
     }
 
     if (request.method === "POST") {
-      const { customer, state } = request.body ?? {};
+      const { action, customer, state, transactionId } = request.body ?? {};
+
+      if (action === "refund-transaction") {
+        if (session.role !== "admin") {
+          return sendJson(response, 403, { error: "forbidden", message: "Only admins can refund transactions." });
+        }
+
+        const transaction = await refundTransactionRecord({ transactionId });
+        if (!transaction) {
+          return sendJson(response, 409, { error: "not_refundable", message: "That transaction has already been refunded or no longer exists." });
+        }
+
+        return sendJson(response, 200, {
+          transaction,
+          transactions: await listTransactions({ customerId: session.customerId, role: session.role })
+        });
+      }
+
       if (!state) return sendJson(response, 400, { error: "bad_request" });
 
       const storedCustomer = await findCustomerById(session.customerId);
