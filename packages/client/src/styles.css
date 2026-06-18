@@ -709,6 +709,42 @@ button.quiet {
   gap: 8px;
 }
 
+.date-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.date-shortcuts button {
+  min-height: 34px;
+  flex: 1 1 88px;
+  border: 1px solid rgba(38, 32, 25, 0.1);
+  background: #eee9df;
+  color: #2b2118;
+  font-size: 0.72rem;
+  padding: 0.44rem 0.55rem;
+}
+
+.date-shortcuts button.active {
+  background: #2a211b;
+  color: #fffaf1;
+}
+
+.empty-action {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px dashed rgba(38, 32, 25, 0.16);
+  border-radius: 16px;
+  background: rgba(255, 252, 246, 0.62);
+}
+
+.empty-action .quiet {
+  justify-self: start;
+  min-height: 34px;
+  padding: 0.45rem 0.75rem;
+}
+
 .session-form {
   display: grid;
   grid-template-columns: 1fr;

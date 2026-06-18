@@ -267,6 +267,11 @@ function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(amount);
 }
 
+function formatShortDate(date: string) {
+  const parsed = new Date(`${date}T12:00:00+08:00`);
+  return new Intl.DateTimeFormat("en-AU", { day: "numeric", month: "short", weekday: "short" }).format(parsed);
+}
+
 function getSessionType(typeId: string) {
   return sessionTypes.find((type) => type.id === typeId) ?? sessionTypes[0];
 }
@@ -762,6 +767,18 @@ export function App() {
     }
   }
 
+  function updateBookingDate(value: string) {
+    setSelectedDate(value);
+    setSelectedSessions([]);
+    setBookingFeedback(null);
+  }
+
+  function updateBookingType(value: string) {
+    setSelectedType(value);
+    setSelectedSessions([]);
+    setBookingFeedback(null);
+  }
+
   async function cancelBooking(bookingId: string) {
     const target = bookings.find((booking) => booking.id === bookingId);
     if (!target) return;
@@ -1114,6 +1131,7 @@ export function App() {
 
                 {view === "book" && (
               <CustomerWorkspace
+                allSessions={sessions}
                 bookingFeedback={bookingFeedback}
                 busyAction={busyAction}
                 currentCustomer={currentCustomer}
@@ -1127,10 +1145,11 @@ export function App() {
                 setSelectedLocationId={(locationId) => {
                   setSelectedLocationId(locationId);
                   setSelectedSessions([]);
+                  setBookingFeedback(null);
                 }}
-                setSelectedDate={setSelectedDate}
+                setSelectedDate={updateBookingDate}
                 setSelectedSessions={setSelectedSessions}
-                setSelectedType={setSelectedType}
+                setSelectedType={updateBookingType}
                 allBookings={bookings}
               />
                 )}
@@ -1409,6 +1428,7 @@ function NavIcon({ view }: { view: AppView }) {
 
 type CustomerWorkspaceProps = {
   allBookings: Booking[];
+  allSessions: Session[];
   bookingFeedback: { tone: "success" | "error"; message: string } | null;
   busyAction: BusyAction;
   currentCustomer: Customer;
@@ -1481,6 +1501,7 @@ function HomeWorkspace({
 function CustomerWorkspace(props: CustomerWorkspaceProps) {
   const {
     allBookings,
+    allSessions,
     bookingFeedback,
     busyAction,
     currentCustomer,
@@ -1498,6 +1519,13 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
   } = props;
 
   const selectedLocation = locations.find((location) => location.id === selectedLocationId);
+  const sessionsForFilters = allSessions.filter((session) => {
+    const matchesLocation = !selectedLocationId || (session.locationId ?? "scarborough") === selectedLocationId;
+    const matchesType = selectedType === "all" || session.typeId === selectedType;
+    return matchesLocation && matchesType;
+  });
+  const availableDates = Array.from(new Set(sessionsForFilters.map((session) => session.date))).sort();
+  const nextAvailableDate = availableDates.find((date) => date >= selectedDate) ?? availableDates[0];
   const selectedSessionDetails = selectedSessions
     .map((sessionId) => sessions.find((session) => session.id === sessionId))
     .filter((session): session is Session => Boolean(session));
@@ -1543,8 +1571,27 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
           </select>
         </div>
 
+        {availableDates.length > 0 && (
+          <div className="date-shortcuts" aria-label="Available dates">
+            {availableDates.slice(0, 6).map((date) => (
+              <button className={date === selectedDate ? "active" : ""} key={date} onClick={() => setSelectedDate(date)} type="button">
+                {formatShortDate(date)}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="session-list">
-          {sessions.length === 0 && <p className="muted">No sessions match this location and date. Try another date or location.</p>}
+          {sessions.length === 0 && (
+            <div className="empty-action">
+              <p className="muted">No sessions match this location and date.</p>
+              {nextAvailableDate && nextAvailableDate !== selectedDate && (
+                <button className="quiet" onClick={() => setSelectedDate(nextAvailableDate)} type="button">
+                  Show {formatShortDate(nextAvailableDate)}
+                </button>
+              )}
+            </div>
+          )}
           {sessions.map((session) => {
             const type = getSessionType(session.typeId);
             const activeCount = activeBookingsFor(session.id, allBookings).length;
