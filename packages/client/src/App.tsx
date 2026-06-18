@@ -362,6 +362,7 @@ export function App() {
   const [selectedType, setSelectedType] = useState("all");
   const [selectedSessions, setSelectedSessions] = useState<string[]>([]);
   const [bookingFeedback, setBookingFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
+  const [passFeedback, setPassFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [profileName, setProfileName] = useState("");
   const [profilePhone, setProfilePhone] = useState("");
   const [authName, setAuthName] = useState("");
@@ -843,14 +844,18 @@ export function App() {
 
     setBusyAction("payment");
     setOperationalMessage("");
+    setPassFeedback(null);
     try {
       const result = await postJson<ProfileResponse>("/api/profile", { action: "membership", membershipId: plan.id });
       if (result.customer) mergeCustomer(result.customer);
       if (result.transactions) setTransactions(result.transactions);
+      setPassFeedback({ tone: "success", message: `${plan.name} is active. Demo payment was approved.` });
       pushNotice("email", "Membership updated", `${plan.name} is active. Demo payment was approved.`);
     } catch (error) {
-      setOperationalMessage(messageFromError(error, "Membership could not be updated in Neon."));
-      pushNotice("sms", "Membership not saved", messageFromError(error, "Membership could not be updated in Neon."));
+      const message = messageFromError(error, "Membership could not be updated in Neon.");
+      setOperationalMessage(message);
+      setPassFeedback({ tone: "error", message });
+      pushNotice("sms", "Membership not saved", message);
     } finally {
       setBusyAction("");
     }
@@ -858,13 +863,15 @@ export function App() {
 
   async function buyVoucher(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const targetForm = event.currentTarget;
+    const form = new FormData(targetForm);
     const amount = Number(form.get("amount"));
     const mode = String(form.get("mode"));
     const recipientEmail = String(form.get("recipientEmail") ?? "").trim();
 
     setBusyAction("payment");
     setOperationalMessage("");
+    setPassFeedback(null);
     try {
       const result = await postJson<VoucherResponse>("/api/vouchers", {
         amount,
@@ -876,13 +883,19 @@ export function App() {
       }
       if (result.transactions) setTransactions(result.transactions);
       if (mode === "credit") {
-        pushNotice("push", "Credit added", `${result.creditsAdded ?? 1} visit credit added to your account. Demo payment approved.`);
+        const message = `${result.creditsAdded ?? 1} visit credit added to your account. Demo payment approved.`;
+        setPassFeedback({ tone: "success", message });
+        pushNotice("push", "Credit added", message);
       } else {
-        pushNotice("email", "Voucher sent", `Gift voucher ${result.voucher?.code ?? ""} was sent to ${recipientEmail}. Demo payment approved.`);
+        const message = `Gift voucher ${result.voucher?.code ?? ""} was sent to ${recipientEmail}. Demo payment approved.`;
+        setPassFeedback({ tone: "success", message });
+        pushNotice("email", "Voucher sent", message);
       }
-      event.currentTarget.reset();
+      targetForm.reset();
     } catch (error) {
-      pushNotice("sms", "Voucher not created", messageFromError(error, "Voucher could not be created."));
+      const message = messageFromError(error, "Voucher could not be created.");
+      setPassFeedback({ tone: "error", message });
+      pushNotice("sms", "Voucher not created", message);
     } finally {
       setBusyAction("");
     }
@@ -890,21 +903,27 @@ export function App() {
 
   async function redeemVoucher(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const targetForm = event.currentTarget;
+    const form = new FormData(targetForm);
     const code = String(form.get("code") ?? "").trim();
 
     setBusyAction("payment");
     setOperationalMessage("");
+    setPassFeedback(null);
     try {
       const result = await postJson<VoucherResponse>("/api/vouchers", {
         action: "redeem",
         code
       });
       if (result.customer) mergeCustomer(result.customer);
-      pushNotice("push", "Voucher redeemed", `${result.creditsAdded ?? 1} visit credit added to your account.`);
-      event.currentTarget.reset();
+      const message = `${result.creditsAdded ?? 1} visit credit added to your account.`;
+      setPassFeedback({ tone: "success", message });
+      pushNotice("push", "Voucher redeemed", message);
+      targetForm.reset();
     } catch (error) {
-      pushNotice("sms", "Voucher not redeemed", messageFromError(error, "Voucher code could not be redeemed."));
+      const message = messageFromError(error, "Voucher code could not be redeemed.");
+      setPassFeedback({ tone: "error", message });
+      pushNotice("sms", "Voucher not redeemed", message);
     } finally {
       setBusyAction("");
     }
@@ -1163,6 +1182,7 @@ export function App() {
                 busyAction={busyAction}
                 buyVoucher={buyVoucher}
                 currentCustomer={currentCustomer}
+                passFeedback={passFeedback}
                 redeemVoucher={redeemVoucher}
                 subscribe={subscribe}
               />
@@ -1752,12 +1772,14 @@ function PassesWorkspace({
   busyAction,
   buyVoucher,
   currentCustomer,
+  passFeedback,
   redeemVoucher,
   subscribe
 }: {
   busyAction: BusyAction;
   buyVoucher: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   currentCustomer: Customer;
+  passFeedback: { tone: "success" | "error"; message: string } | null;
   redeemVoucher: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   subscribe: (membershipId: string) => void;
 }) {
@@ -1790,6 +1812,7 @@ function PassesWorkspace({
             </article>
           ))}
         </div>
+        {passFeedback && <p className={`booking-feedback ${passFeedback.tone}`}>{passFeedback.message}</p>}
       </section>
 
       <section className="surface voucher-card">
