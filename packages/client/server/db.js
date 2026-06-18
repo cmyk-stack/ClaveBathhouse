@@ -187,35 +187,64 @@ async function ensureSchemaInternal() {
 async function removeLegacyDemoData() {
   await sql`
     DELETE FROM clave_app_state
-    WHERE customer_id IN ('c2', 'c3')
+    WHERE customer_id IN ('c1', 'c2', 'c3')
+      OR customer_id IN (
+        SELECT id
+        FROM clave_customers
+        WHERE lower(email) IN ('jon@example.com', 'mia@example.com', 'shane@example.com')
+          OR lower(email) LIKE 'codex-%@example.com'
+      )
   `;
 
   await sql`
     DELETE FROM clave_bookings
     WHERE id IN ('b1', 'b2', 'b3')
-      OR customer_id IN ('c2', 'c3')
+      OR session_id IN ('s1', 's2', 's3')
+      OR customer_id IN ('c1', 'c2', 'c3')
       OR customer_id IN (
         SELECT id
         FROM clave_customers
-        WHERE lower(email) IN ('jon@example.com', 'mia@example.com')
+        WHERE lower(email) IN ('jon@example.com', 'mia@example.com', 'shane@example.com')
+          OR lower(email) LIKE 'codex-%@example.com'
       )
   `;
 
   await sql`
     DELETE FROM clave_transactions
     WHERE booking_id IN ('b1', 'b2', 'b3')
-      OR customer_id IN ('c2', 'c3')
+      OR booking_id IN (
+        SELECT id
+        FROM clave_bookings
+        WHERE session_id IN ('s1', 's2', 's3')
+      )
+      OR booking_id LIKE '%-s1'
+      OR booking_id LIKE '%-s2'
+      OR booking_id LIKE '%-s3'
+      OR customer_id IN ('c1', 'c2', 'c3')
       OR customer_id IN (
         SELECT id
         FROM clave_customers
-        WHERE lower(email) IN ('jon@example.com', 'mia@example.com')
+        WHERE lower(email) IN ('jon@example.com', 'mia@example.com', 'shane@example.com')
+          OR lower(email) LIKE 'codex-%@example.com'
+      )
+  `;
+
+  await sql`
+    DELETE FROM clave_vouchers
+    WHERE purchaser_customer_id IN ('c1', 'c2', 'c3')
+      OR purchaser_customer_id IN (
+        SELECT id
+        FROM clave_customers
+        WHERE lower(email) IN ('jon@example.com', 'mia@example.com', 'shane@example.com')
+          OR lower(email) LIKE 'codex-%@example.com'
       )
   `;
 
   await sql`
     DELETE FROM clave_customers
-    WHERE id IN ('c2', 'c3')
-      OR lower(email) IN ('jon@example.com', 'mia@example.com')
+    WHERE id IN ('c1', 'c2', 'c3')
+      OR lower(email) IN ('jon@example.com', 'mia@example.com', 'shane@example.com')
+      OR lower(email) LIKE 'codex-%@example.com'
   `;
 }
 
