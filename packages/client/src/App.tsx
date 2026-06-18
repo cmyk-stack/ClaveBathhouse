@@ -1120,6 +1120,7 @@ export function App() {
               handleAuth={handleAuth}
               handleSocialAuth={handleSocialAuth}
               setAuthEmail={setAuthEmail}
+              setAuthMessage={setAuthMessage}
               setAuthMode={setAuthMode}
               setAuthName={setAuthName}
               setAuthPassword={setAuthPassword}
@@ -1274,6 +1275,7 @@ function AuthWorkspace({
   handleAuth,
   handleSocialAuth,
   setAuthEmail,
+  setAuthMessage,
   setAuthMode,
   setAuthName,
   setAuthPassword,
@@ -1290,6 +1292,7 @@ function AuthWorkspace({
   handleAuth: (event: FormEvent<HTMLFormElement>) => void;
   handleSocialAuth: (provider: "Google") => void;
   setAuthEmail: (value: string) => void;
+  setAuthMessage: (value: string) => void;
   setAuthMode: (mode: AuthMode) => void;
   setAuthName: (value: string) => void;
   setAuthPassword: (value: string) => void;
@@ -1299,6 +1302,10 @@ function AuthWorkspace({
   const title =
     authMode === "signup" ? "Create your account" : authMode === "reset" || authMode === "reset-complete" ? "Reset password" : "Welcome back";
   const action = authMode === "signup" ? "Create account" : authMode === "reset" ? "Send reset token" : authMode === "reset-complete" ? "Update password" : "Sign in";
+  const changeAuthMode = (mode: AuthMode) => {
+    setAuthMessage("");
+    setAuthMode(mode);
+  };
 
   return (
     <section className="auth-screen">
@@ -1358,10 +1365,10 @@ function AuthWorkspace({
         </form>
 
         <div className="auth-links">
-          {authMode !== "login" && <button onClick={() => setAuthMode("login")}>Back to login</button>}
-          {authMode !== "signup" && <button onClick={() => setAuthMode("signup")}>Create account</button>}
-          {authMode !== "reset" && authMode !== "reset-complete" && <button onClick={() => setAuthMode("reset")}>Forgot password</button>}
-          {authMode === "reset-complete" && <button onClick={() => setAuthMode("reset")}>Send again</button>}
+          {authMode !== "login" && <button onClick={() => changeAuthMode("login")}>Back to login</button>}
+          {authMode !== "signup" && <button onClick={() => changeAuthMode("signup")}>Create account</button>}
+          {authMode !== "reset" && authMode !== "reset-complete" && <button onClick={() => changeAuthMode("reset")}>Forgot password</button>}
+          {authMode === "reset-complete" && <button onClick={() => changeAuthMode("reset")}>Send again</button>}
           <button className="google-auth-link" onClick={() => handleSocialAuth("Google")} type="button">
             <GoogleIcon />
             <span>Google</span>

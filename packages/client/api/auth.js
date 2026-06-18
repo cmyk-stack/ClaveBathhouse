@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import {
   customerFromRow,
   ensureSchema,
+  findCustomerByEmail,
   findCustomerById,
   findCustomerWithAuthByEmail,
   getStoredState,
@@ -53,7 +54,7 @@ export default async function handler(request, response) {
       const existing = await findCustomerWithAuthByEmail(email);
       const passwordOk = await verifyPassword(String(request.body?.password ?? ""), existing?.password_hash);
       if (!existing || !passwordOk) {
-        return sendJson(response, 404, { error: "not_found", message: "No account exists for that email." });
+        return sendJson(response, 401, { error: "invalid_credentials", message: "Email or password is incorrect." });
       }
 
       const publicCustomer = customerFromRow(existing);
@@ -73,6 +74,11 @@ export default async function handler(request, response) {
       const password = String(request.body?.password ?? "");
       if (!customer?.email || !customer?.name || password.length < 8) {
         return sendJson(response, 400, { error: "bad_request", message: "Use a name, email, and password of at least 8 characters." });
+      }
+
+      const existing = await findCustomerByEmail(customer.email);
+      if (existing) {
+        return sendJson(response, 409, { error: "account_exists", message: "An account already exists for that email. Sign in instead." });
       }
 
       const savedCustomer = await upsertCustomer(
@@ -104,11 +110,17 @@ export default async function handler(request, response) {
       const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
       const tokenSaved = await savePasswordResetToken(email, resetToken, expiresAt);
       if (tokenSaved) {
-        await sendTransactionalEmail({
+        const emailResult = await sendTransactionalEmail({
           subject: "Clave Bathhouse password reset",
           text: `A password reset was requested for your Clave Bathhouse account.\n\nReset token: ${resetToken}\n\nThis token expires in 1 hour.`,
           to: email
         });
+        if (emailResult?.skipped) {
+          return sendJson(response, 503, {
+            error: "email_not_configured",
+            message: "Password reset email is not configured yet. Contact Clave Bathhouse to reset your password."
+          });
+        }
       }
       return sendJson(response, 200, {
         message: "If an account exists for that email, a reset token has been sent."

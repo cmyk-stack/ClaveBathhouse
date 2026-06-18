@@ -7,6 +7,26 @@ const seedLocations = [
   { id: "fremantle", name: "Clave Fremantle", address: "Market Street, Fremantle WA", hours: "7:00am - 8:00pm" }
 ];
 
+const demoAdmin = {
+  email: "demo-admin@clavebathhouse.test",
+  name: "Clave Demo Admin",
+  password: "ClaveDemoAdmin123!",
+  phone: "+61 400 000 101"
+};
+
+const seedSchedule = [
+  { capacity: 8, dayOffset: 1, locationId: "scarborough", practitioner: "Clave Team", time: "07:00", typeId: "thermal" },
+  { capacity: 8, dayOffset: 1, locationId: "scarborough", practitioner: "Clave Team", time: "12:30", typeId: "recovery" },
+  { capacity: 10, dayOffset: 1, locationId: "scarborough", practitioner: "Clave Team", time: "18:00", typeId: "ritual" },
+  { capacity: 6, dayOffset: 2, locationId: "fremantle", practitioner: "Clave Team", time: "08:30", typeId: "thermal" },
+  { capacity: 8, dayOffset: 2, locationId: "fremantle", practitioner: "Clave Team", time: "17:30", typeId: "recovery" },
+  { capacity: 10, dayOffset: 3, locationId: "scarborough", practitioner: "Clave Team", time: "09:00", typeId: "thermal" },
+  { capacity: 6, dayOffset: 3, locationId: "scarborough", practitioner: "Clave Team", time: "16:00", typeId: "recovery" },
+  { capacity: 12, dayOffset: 4, locationId: "fremantle", practitioner: "Clave Team", time: "18:30", typeId: "ritual" },
+  { capacity: 8, dayOffset: 5, locationId: "scarborough", practitioner: "Clave Team", time: "06:30", typeId: "thermal" },
+  { capacity: 8, dayOffset: 5, locationId: "fremantle", practitioner: "Clave Team", time: "12:00", typeId: "thermal" }
+];
+
 export function isDatabaseConfigured() {
   return Boolean(process.env.POSTGRES_URL);
 }
@@ -150,9 +170,6 @@ async function ensureSchemaInternal() {
     )
   `;
 
-  await seedFirstAdmin();
-  await removeLegacyDemoData();
-
   for (const location of seedLocations) {
     await sql`
       INSERT INTO clave_locations (id, name, address, hours)
@@ -161,6 +178,10 @@ async function ensureSchemaInternal() {
     `;
   }
 
+  await seedFirstAdmin();
+  await seedDemoAdmin();
+  await seedFutureSessions();
+  await removeLegacyDemoData();
 }
 
 async function removeLegacyDemoData() {
@@ -224,6 +245,52 @@ async function seedFirstAdmin() {
       role = 'admin',
       password_hash = COALESCE(EXCLUDED.password_hash, clave_customers.password_hash)
   `;
+}
+
+async function seedDemoAdmin() {
+  const passwordHash = await hashPassword(demoAdmin.password);
+  await sql`
+    INSERT INTO clave_customers (id, name, email, phone, membership_id, credits, payment_method, password_hash, role)
+    VALUES (
+      ${"demo-admin"},
+      ${demoAdmin.name},
+      ${demoAdmin.email},
+      ${demoAdmin.phone},
+      ${"restore"},
+      ${9},
+      ${"Demo approved"},
+      ${passwordHash},
+      ${"admin"}
+    )
+    ON CONFLICT (email)
+    DO UPDATE SET
+      name = EXCLUDED.name,
+      phone = EXCLUDED.phone,
+      membership_id = EXCLUDED.membership_id,
+      credits = GREATEST(clave_customers.credits, EXCLUDED.credits),
+      payment_method = EXCLUDED.payment_method,
+      password_hash = EXCLUDED.password_hash,
+      role = 'admin'
+  `;
+}
+
+function seedDateAfter(dayOffset) {
+  const date = new Date();
+  date.setDate(date.getDate() + dayOffset);
+  return date.toISOString().slice(0, 10);
+}
+
+async function seedFutureSessions() {
+  for (const session of seedSchedule) {
+    const date = seedDateAfter(session.dayOffset);
+    const startsAt = `${date}T${session.time}:00+08:00`;
+    const id = `seed-${session.locationId}-${date}-${session.typeId}-${session.time.replace(":", "")}`;
+    await sql`
+      INSERT INTO clave_sessions (id, location_id, type_id, starts_at, capacity, practitioner)
+      VALUES (${id}, ${session.locationId}, ${session.typeId}, ${startsAt}, ${session.capacity}, ${session.practitioner})
+      ON CONFLICT (id) DO NOTHING
+    `;
+  }
 }
 
 export function customerFromRow(row) {
