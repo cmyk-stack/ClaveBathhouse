@@ -100,9 +100,13 @@ type PersistedAppState = {
 };
 
 type AuthResponse = {
+  bookings?: Booking[];
   customer?: Customer;
+  customers?: Customer[];
   message?: string;
+  sessions?: Session[];
   state?: Partial<PersistedAppState> | null;
+  transactions?: Transaction[];
   error?: string;
 };
 
@@ -421,6 +425,7 @@ export function App() {
         .then((result) => {
           if (!result.customer) throw new Error("Google sign in finished, but the account could not be loaded.");
           applyRemoteSession(result.customer);
+          applyLiveData(result);
           setIsAuthenticated(true);
           setSyncStatus("synced");
           loadOperationalData(result.customer);
@@ -442,6 +447,7 @@ export function App() {
           return;
         }
         applyRemoteSession(result.customer);
+        applyLiveData(result);
         setIsAuthenticated(true);
         setSyncStatus("synced");
         loadOperationalData(result.customer);
@@ -526,19 +532,26 @@ export function App() {
     else mergeCustomer(result.customer);
   }
 
+  function applyLiveData(result: { bookings?: Booking[]; customers?: Customer[]; sessions?: Session[]; transactions?: Transaction[] }) {
+    if (result.sessions) {
+      setSessions(result.sessions);
+      const hasSelectedDate = result.sessions.some((session) => session.date === selectedDate);
+      if (!hasSelectedDate && result.sessions[0]) setSelectedDate(result.sessions[0].date);
+    }
+    if (result.bookings) setBookings(result.bookings);
+    if (result.customers) setCustomers(result.customers);
+    if (result.transactions) setTransactions(result.transactions);
+  }
+
   async function loadOperationalData(customer = currentCustomer) {
     setIsLoadingOperations(true);
     setOperationalMessage("");
     try {
       const result = await getJson<BootstrapResponse>("/api/state");
-      if (result.sessions) {
-        setSessions(result.sessions);
-        const hasSelectedDate = result.sessions.some((session) => session.date === selectedDate);
-        if (!hasSelectedDate && result.sessions[0]) setSelectedDate(result.sessions[0].date);
-      }
-      if (result.bookings) setBookings(result.bookings);
-      if (customer.role === "admin" && result.customers) setCustomers(result.customers);
-      if (result.transactions) setTransactions(result.transactions);
+      applyLiveData({
+        ...result,
+        customers: customer.role === "admin" ? result.customers : undefined
+      });
       setSyncStatus("synced");
     } catch (error) {
       if (isStaticPreviewError(error)) {
@@ -597,6 +610,7 @@ export function App() {
         });
         if (!result.customer) throw new Error(result.message ?? "Password reset failed.");
         applyRemoteSession(result.customer);
+        applyLiveData(result);
         setIsAuthenticated(true);
         setAuthMessage("");
         setAuthPassword("");
@@ -620,6 +634,7 @@ export function App() {
         const result = await postJson<AuthResponse>("/api/auth", { email: authEmail, mode: "login", password: authPassword });
         if (!result.customer) throw new Error(result.message ?? "Sign in failed");
         applyRemoteSession(result.customer);
+        applyLiveData(result);
         setIsAuthenticated(true);
         setAuthMessage("");
         pushNotice("push", "Welcome back", `${result.customer.name} signed in.`);
@@ -650,6 +665,7 @@ export function App() {
     try {
       const result = await postJson<AuthResponse>("/api/auth", { customer: newCustomer, mode: "signup", password: authPassword });
       applyRemoteSession(result.customer ?? newCustomer);
+      applyLiveData(result);
       setSyncStatus("synced");
       setIsAuthenticated(true);
       setAuthMessage("");

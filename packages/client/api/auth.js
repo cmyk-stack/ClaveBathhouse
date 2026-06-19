@@ -6,6 +6,9 @@ import {
   findCustomerById,
   findCustomerWithAuthByEmail,
   getStoredState,
+  listBookings,
+  listSessions,
+  listTransactions,
   savePasswordResetToken,
   sendError,
   sendJson,
@@ -39,7 +42,10 @@ export default async function handler(request, response) {
 
       return sendJson(response, 200, {
         customer,
-        state: await getStoredState(customer.id)
+        bookings: await listBookings({ customerId: customer.id, role: customer.role }),
+        sessions: await listSessions(),
+        state: await getStoredState(customer.id),
+        transactions: await listTransactions({ customerId: customer.id, role: customer.role })
       });
     }
 
@@ -66,7 +72,10 @@ export default async function handler(request, response) {
 
       return sendJson(response, 200, {
         customer: publicCustomer,
-        state: await getStoredState(publicCustomer.id)
+        bookings: await listBookings({ customerId: publicCustomer.id, role: publicCustomer.role }),
+        sessions: await listSessions(),
+        state: await getStoredState(publicCustomer.id),
+        transactions: await listTransactions({ customerId: publicCustomer.id, role: publicCustomer.role })
       });
     }
 
@@ -101,7 +110,10 @@ export default async function handler(request, response) {
 
       return sendJson(response, 200, {
         customer: savedCustomer,
-        state: await getStoredState(savedCustomer.id)
+        bookings: await listBookings({ customerId: savedCustomer.id, role: savedCustomer.role }),
+        sessions: await listSessions(),
+        state: await getStoredState(savedCustomer.id),
+        transactions: await listTransactions({ customerId: savedCustomer.id, role: savedCustomer.role })
       });
     }
 
@@ -158,7 +170,10 @@ export default async function handler(request, response) {
 
       return sendJson(response, 200, {
         customer,
-        state: await getStoredState(customer.id)
+        bookings: await listBookings({ customerId: customer.id, role: customer.role }),
+        sessions: await listSessions(),
+        state: await getStoredState(customer.id),
+        transactions: await listTransactions({ customerId: customer.id, role: customer.role })
       });
     }
 
