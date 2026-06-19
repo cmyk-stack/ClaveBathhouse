@@ -1,6 +1,23 @@
 import { createSessionRecord, deleteSessionRecord, ensureSchema, listSessions, recordAdminAudit, sendError, sendJson, updateSessionRecord } from "../server/db.js";
 import { requireRole, requireSession } from "../server/security.js";
 
+function dateRange(startDate, endDate) {
+  const startMatch = String(startDate ?? "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const endMatch = String(endDate ?? "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!startMatch || !endMatch) return [];
+
+  const start = Date.UTC(Number(startMatch[1]), Number(startMatch[2]) - 1, Number(startMatch[3]));
+  const end = Date.UTC(Number(endMatch[1]), Number(endMatch[2]) - 1, Number(endMatch[3]));
+  if (Number.isNaN(start) || Number.isNaN(end) || start > end) return [];
+
+  const dates = [];
+  for (let cursor = start; cursor <= end && dates.length < 120; cursor += 24 * 60 * 60 * 1000) {
+    const date = new Date(cursor);
+    dates.push(date.toISOString().slice(0, 10));
+  }
+  return dates;
+}
+
 export default async function handler(request, response) {
   try {
     const session = requireSession(request, response);
@@ -15,7 +32,7 @@ export default async function handler(request, response) {
       const adminSession = requireRole(request, response, ["admin"]);
       if (!adminSession) return;
 
-      const { action, session: nextSession, sessionId } = request.body ?? {};
+      const { action, endDate, session: nextSession, sessionId, startDate } = request.body ?? {};
       if (action === "delete") {
         if (!sessionId) return sendJson(response, 400, { error: "bad_request", message: "Session ID is required." });
         const deletedSession = await deleteSessionRecord({ sessionId });
@@ -42,6 +59,30 @@ export default async function handler(request, response) {
           details: { sessionId }
         });
         return sendJson(response, 200, { session: updatedSession, sessions: await listSessions() });
+      }
+
+      if (action === "bulk-create") {
+        const dates = dateRange(startDate, endDate);
+        if (dates.length === 0) {
+          return sendJson(response, 400, { error: "bad_request", message: "Choose a valid start and end date." });
+        }
+
+        const createdSessions = [];
+        for (const date of dates) {
+          createdSessions.push(
+            await createSessionRecord({
+              ...nextSession,
+              date,
+              id: `bulk-${nextSession.locationId ?? "scarborough"}-${date}-${nextSession.typeId}-${nextSession.time.replace(":", "")}`
+            })
+          );
+        }
+        await recordAdminAudit({
+          action: "sessions_bulk_created",
+          actorCustomerId: adminSession.customerId,
+          details: { count: createdSessions.length, endDate, startDate }
+        });
+        return sendJson(response, 201, { createdSessions, sessions: await listSessions() });
       }
 
       const createdSession = await createSessionRecord(nextSession);

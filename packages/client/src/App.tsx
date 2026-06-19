@@ -388,6 +388,7 @@ export function App() {
   const [newTypeId, setNewTypeId] = useState("thermal");
   const [newLocationId, setNewLocationId] = useState("scarborough");
   const [newDate, setNewDate] = useState(() => localDateAfter(4));
+  const [newEndDate, setNewEndDate] = useState(() => localDateAfter(10));
   const [newTime, setNewTime] = useState("16:00");
   const [newPractitioner, setNewPractitioner] = useState("Clave Team");
   const [adminTab, setAdminTab] = useState<AdminTab>("overview");
@@ -1019,6 +1020,38 @@ export function App() {
     pushNotice("email", "Schedule updated", `${getSessionType(newTypeId).name} was added to the live timetable.`);
   }
 
+  async function createSessionRange(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const session: Session = {
+      id: `s${Date.now()}`,
+      typeId: newTypeId,
+      locationId: newLocationId,
+      date: newDate,
+      time: newTime,
+      capacity: newCapacity,
+      practitioner: newPractitioner.trim() || "Clave Team"
+    };
+    setBusyAction("session");
+    setOperationalMessage("");
+    try {
+      const result = await postJson<SessionsResponse>("/api/sessions", {
+        action: "bulk-create",
+        endDate: newEndDate,
+        session,
+        startDate: newDate
+      });
+      if (result.sessions) setSessions(result.sessions);
+    } catch (error) {
+      const message = messageFromError(error, "Schedule range could not be created in Neon.");
+      setOperationalMessage(message);
+      pushNotice("sms", "Schedule not saved", message);
+      return;
+    } finally {
+      setBusyAction("");
+    }
+    pushNotice("email", "Schedule updated", `${getSessionType(newTypeId).name} was added from ${newDate} to ${newEndDate}.`);
+  }
+
   async function updateSession(event: FormEvent<HTMLFormElement>, sessionId: string) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -1254,7 +1287,7 @@ export function App() {
                 bookings={bookings}
                 busyAction={busyAction}
                 cancelBooking={cancelBooking}
-                createSession={createSession}
+                createSession={createSessionRange}
                 adminTab={adminTab}
                 currentCustomerId={currentCustomer.id}
                 customers={customers}
@@ -1262,6 +1295,7 @@ export function App() {
                 healthStatus={healthStatus}
                 newCapacity={newCapacity}
                 newDate={newDate}
+                newEndDate={newEndDate}
                 newLocationId={newLocationId}
                 newPractitioner={newPractitioner}
                 newTime={newTime}
@@ -1272,6 +1306,7 @@ export function App() {
                 sessions={sessions}
                 setNewCapacity={setNewCapacity}
                 setNewDate={setNewDate}
+                setNewEndDate={setNewEndDate}
                 setNewLocationId={setNewLocationId}
                 setNewPractitioner={setNewPractitioner}
                 setNewTime={setNewTime}
@@ -2079,6 +2114,7 @@ type AdminWorkspaceProps = {
   healthStatus: HealthResponse | null;
   newCapacity: number;
   newDate: string;
+  newEndDate: string;
   newLocationId: string;
   newPractitioner: string;
   newTime: string;
@@ -2089,6 +2125,7 @@ type AdminWorkspaceProps = {
   sessions: Session[];
   setNewCapacity: (value: number) => void;
   setNewDate: (value: string) => void;
+  setNewEndDate: (value: string) => void;
   setNewLocationId: (value: string) => void;
   setNewPractitioner: (value: string) => void;
   setNewTime: (value: string) => void;
@@ -2112,6 +2149,7 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
     healthStatus,
     newCapacity,
     newDate,
+    newEndDate,
     newLocationId,
     newPractitioner,
     newTime,
@@ -2122,6 +2160,7 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
     sessions,
     setNewCapacity,
     setNewDate,
+    setNewEndDate,
     setNewLocationId,
     setNewPractitioner,
     setNewTime,
@@ -2266,11 +2305,18 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
               </option>
             ))}
           </select>
-          <input type="date" value={newDate} onChange={(event) => setNewDate(event.target.value)} />
+          <label>
+            <span>Start date</span>
+            <input type="date" value={newDate} onChange={(event) => setNewDate(event.target.value)} />
+          </label>
+          <label>
+            <span>End date</span>
+            <input type="date" value={newEndDate} onChange={(event) => setNewEndDate(event.target.value)} />
+          </label>
           <input type="time" value={newTime} onChange={(event) => setNewTime(event.target.value)} />
           <input type="number" min={1} max={40} value={newCapacity} onChange={(event) => setNewCapacity(Number(event.target.value))} />
           <input value={newPractitioner} onChange={(event) => setNewPractitioner(event.target.value)} placeholder="Practitioner" />
-          <button>Add session</button>
+          <button>{busyAction === "session" ? "Publishing" : "Publish range"}</button>
         </form>
         <div className="admin-filter-row">
           <select value={scheduleLocationFilter} onChange={(event) => setScheduleLocationFilter(event.target.value)}>

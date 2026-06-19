@@ -839,6 +839,13 @@ export async function createSessionRecord(session) {
   const result = await sql`
     INSERT INTO clave_sessions (id, location_id, type_id, starts_at, capacity, practitioner)
     VALUES (${id}, ${session.locationId ?? "scarborough"}, ${session.typeId}, ${startsAt}, ${session.capacity}, ${session.practitioner ?? "Clave Team"})
+    ON CONFLICT (id)
+    DO UPDATE SET
+      location_id = EXCLUDED.location_id,
+      type_id = EXCLUDED.type_id,
+      starts_at = EXCLUDED.starts_at,
+      capacity = EXCLUDED.capacity,
+      practitioner = EXCLUDED.practitioner
     RETURNING id, location_id, type_id, starts_at, capacity, practitioner
   `;
   return sessionFromRow(result.rows[0]);
