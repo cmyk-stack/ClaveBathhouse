@@ -909,6 +909,7 @@ export async function listBookings({ customerId, role }) {
           FROM clave_bookings b
           JOIN clave_customers c ON c.id = b.customer_id
           WHERE b.customer_id = ${customerId}
+            AND b.status <> 'cancelled'
             AND b.id NOT IN ('b1', 'b2', 'b3')
             AND b.customer_id NOT IN ('c2', 'c3')
             AND lower(c.email) NOT IN ('jon@example.com', 'mia@example.com')

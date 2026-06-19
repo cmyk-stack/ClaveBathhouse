@@ -395,17 +395,6 @@ export function App() {
   if (canUseStaffTools) navItems.push("staff");
   if (canUseAdminTools) navItems.push("admin");
 
-  const visibleSessions = useMemo(
-    () =>
-      sessions.filter((session) => {
-        const matchesDate = session.date === selectedDate;
-        const matchesLocation = !selectedLocationId || (session.locationId ?? "scarborough") === selectedLocationId;
-        const matchesType = selectedType === "all" || session.typeId === selectedType;
-        return matchesDate && matchesLocation && matchesType;
-      }),
-    [selectedDate, selectedLocationId, selectedType, sessions]
-  );
-
   const customerBookings = bookings.filter((booking) => booking.customerId === currentCustomer.id);
   const customerActiveBookings = customerBookings.filter((booking) => booking.status !== "cancelled");
   const occupancy =
@@ -689,7 +678,16 @@ export function App() {
       return;
     }
 
-    const visibleSessionIds = new Set(visibleSessions.map((session) => session.id));
+    const visibleSessionIds = new Set(
+      sessions
+        .filter((session) => {
+          const matchesDate = session.date === selectedDate;
+          const matchesLocation = !selectedLocationId || (session.locationId ?? "scarborough") === selectedLocationId;
+          const matchesType = selectedType === "all" || session.typeId === selectedType;
+          return matchesDate && matchesLocation && matchesType;
+        })
+        .map((session) => session.id)
+    );
     const validSelectedSessions = selectedSessions.filter((sessionId) => visibleSessionIds.has(sessionId));
     if (validSelectedSessions.length === 0) {
       setSelectedSessions([]);
@@ -778,6 +776,25 @@ export function App() {
     setSelectedType(value);
     setSelectedSessions([]);
     setBookingFeedback(null);
+  }
+
+  function selectBookingLocation(locationId: string | null) {
+    setSelectedLocationId(locationId);
+    setSelectedSessions([]);
+    setBookingFeedback(null);
+
+    if (!locationId) return;
+
+    const datesForLocation = sessions
+      .filter((session) => {
+        const matchesLocation = (session.locationId ?? "scarborough") === locationId;
+        const matchesType = selectedType === "all" || session.typeId === selectedType;
+        return matchesLocation && matchesType;
+      })
+      .map((session) => session.date)
+      .sort();
+    const nextDate = datesForLocation.find((date) => date >= selectedDate) ?? datesForLocation[0];
+    if (nextDate && nextDate !== selectedDate) setSelectedDate(nextDate);
   }
 
   async function cancelBooking(bookingId: string) {
@@ -1161,12 +1178,7 @@ export function App() {
                 selectedLocationId={selectedLocationId}
                 selectedSessions={selectedSessions}
                 selectedType={selectedType}
-                sessions={visibleSessions}
-                setSelectedLocationId={(locationId) => {
-                  setSelectedLocationId(locationId);
-                  setSelectedSessions([]);
-                  setBookingFeedback(null);
-                }}
+                setSelectedLocationId={selectBookingLocation}
                 setSelectedDate={updateBookingDate}
                 setSelectedSessions={setSelectedSessions}
                 setSelectedType={updateBookingType}
@@ -1465,7 +1477,6 @@ type CustomerWorkspaceProps = {
   selectedLocationId: string | null;
   selectedSessions: string[];
   selectedType: string;
-  sessions: Session[];
   setSelectedLocationId: (locationId: string | null) => void;
   setSelectedDate: (value: string) => void;
   setSelectedSessions: (value: string[]) => void;
@@ -1484,8 +1495,9 @@ function HomeWorkspace({
   setView: (view: AppView) => void;
 }) {
   const nextBooking = bookings.find((booking) => booking.status === "confirmed" || booking.status === "checked-in");
-  const nextSession = nextBooking ? sessions.find((session) => session.id === nextBooking.sessionId) : sessions[0];
-  const nextAvailable = sessions[0];
+  const orderedSessions = [...sessions].sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`));
+  const nextSession = nextBooking ? sessions.find((session) => session.id === nextBooking.sessionId) : orderedSessions[0];
+  const nextAvailable = orderedSessions[0];
 
   return (
     <div className="workspace-grid">
@@ -1505,7 +1517,7 @@ function HomeWorkspace({
         ) : (
           <div className="visit-card">
             <strong>Ready when you are</strong>
-            <span>{nextAvailable ? `Next sessions start ${nextAvailable.date}` : "Sessions will appear here once the timetable is published."}</span>
+            <span>{nextAvailable ? `Next available ${nextAvailable.date} at ${nextAvailable.time}` : "No sessions are available yet."}</span>
           </div>
         )}
         <button onClick={() => setView("book")}>Book visit</button>
@@ -1538,7 +1550,6 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
     selectedLocationId,
     selectedSessions,
     selectedType,
-    sessions,
     setSelectedLocationId,
     setSelectedDate,
     setSelectedSessions,
@@ -1553,8 +1564,9 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
   });
   const availableDates = Array.from(new Set(sessionsForFilters.map((session) => session.date))).sort();
   const nextAvailableDate = availableDates.find((date) => date >= selectedDate) ?? availableDates[0];
+  const displayedSessions = sessionsForFilters.filter((session) => session.date === selectedDate);
   const selectedSessionDetails = selectedSessions
-    .map((sessionId) => sessions.find((session) => session.id === sessionId))
+    .map((sessionId) => allSessions.find((session) => session.id === sessionId))
     .filter((session): session is Session => Boolean(session));
   const selectedDue = selectedSessionDetails.reduce((sum, session, index) => {
     const full = activeBookingsFor(session.id, allBookings).length >= session.capacity;
@@ -1609,7 +1621,7 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
         )}
 
         <div className="session-list">
-          {sessions.length === 0 && (
+          {displayedSessions.length === 0 && (
             <div className="empty-action">
               <p className="muted">No sessions match this location and date.</p>
               {nextAvailableDate && nextAvailableDate !== selectedDate && (
@@ -1619,7 +1631,7 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
               )}
             </div>
           )}
-          {sessions.map((session) => {
+          {displayedSessions.map((session) => {
             const type = getSessionType(session.typeId);
             const activeCount = activeBookingsFor(session.id, allBookings).length;
             const bookedByMe = allBookings.some(
