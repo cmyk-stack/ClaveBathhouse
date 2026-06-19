@@ -387,6 +387,7 @@ export function App() {
   const [newTime, setNewTime] = useState("16:00");
   const [newPractitioner, setNewPractitioner] = useState("Clave Team");
   const [adminTab, setAdminTab] = useState<AdminTab>("overview");
+  const [emptySessionRetry, setEmptySessionRetry] = useState(false);
 
   const currentCustomer = customers.find((customer) => customer.id === selectedCustomerId) ?? customers[0];
   const canUseStaffTools = currentCustomer.role === "staff" || currentCustomer.role === "admin";
@@ -483,6 +484,12 @@ export function App() {
       window.removeEventListener("offline", handleOffline);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || sessions.length > 0 || isLoadingOperations || emptySessionRetry) return;
+    setEmptySessionRetry(true);
+    loadOperationalData(currentCustomer);
+  }, [currentCustomer, emptySessionRetry, isAuthenticated, isLoadingOperations, sessions.length]);
 
   function pushNotice(channel: Channel, title: string, body: string) {
     setNotices((current) => [{ id: `n${Date.now()}`, channel, title, body }, ...current].slice(0, 8));
