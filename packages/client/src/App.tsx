@@ -1979,6 +1979,11 @@ function ProfileWorkspace({
   sessions: Session[];
   syncStatus: "local" | "syncing" | "synced" | "error";
 }) {
+  const sessionById = new Map(sessions.map((session) => [session.id, session]));
+  const visibleBookings = bookings
+    .map((booking) => ({ booking, session: sessionById.get(booking.sessionId) }))
+    .filter((item): item is { booking: Booking; session: Session } => Boolean(item.session));
+
   return (
     <div className="workspace-grid">
       <section className="surface">
@@ -2035,9 +2040,8 @@ function ProfileWorkspace({
           </div>
         </div>
         <div className="table-list">
-          {bookings.length === 0 && <p className="muted">No upcoming visits.</p>}
-          {bookings.map((booking) => {
-            const session = sessions.find((item) => item.id === booking.sessionId) ?? { date: "TBC", time: "TBC", typeId: "thermal" };
+          {visibleBookings.length === 0 && <p className="muted">No upcoming visits.</p>}
+          {visibleBookings.map(({ booking, session }) => {
             return (
               <div className="table-row" key={booking.id}>
                 <span>{getSessionType(session.typeId).name}</span>
