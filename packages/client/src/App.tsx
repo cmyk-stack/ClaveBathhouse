@@ -510,6 +510,7 @@ export function App() {
   }
 
   function applyRemoteSession(customer: Customer) {
+    setEmptySessionRetry(false);
     setSelectedCustomerId(customer.id);
     setProfileName(customer.name);
     setProfilePhone(customer.phone);
@@ -699,6 +700,9 @@ export function App() {
     setAuthPassword("");
     setNotices([]);
     setTransactions([]);
+    setSessions([]);
+    setBookings([]);
+    setEmptySessionRetry(false);
     setView("home");
   }
 
