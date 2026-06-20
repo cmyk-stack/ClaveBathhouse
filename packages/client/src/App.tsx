@@ -498,6 +498,13 @@ export function App() {
     loadOperationalData(currentCustomer);
   }, [currentCustomer, emptySessionRetry, isAuthenticated, isLoadingOperations, sessions.length]);
 
+  useEffect(() => {
+    if (!canUseAdminTools || healthStatus) return;
+    getJson<HealthResponse>("/api/health")
+      .then(setHealthStatus)
+      .catch(() => undefined);
+  }, [canUseAdminTools, healthStatus]);
+
   function pushNotice(channel: Channel, title: string, body: string) {
     setNotices((current) => [{ id: `n${Date.now()}`, channel, title, body }, ...current].slice(0, 8));
   }
@@ -2264,7 +2271,7 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
             <p className="eyebrow">Production</p>
             <h3>Launch health</h3>
           </div>
-          <span className={`status ${healthStatus?.ok ? "paid" : "waitlist"}`}>{healthStatus?.ok ? "Ready" : "Needs attention"}</span>
+          <span className={`status ${healthStatus?.ok ? "paid" : "waitlist"}`}>{healthStatus ? (healthStatus.ok ? "Ready" : "Needs attention") : "Checking"}</span>
         </div>
         <button className="quiet" onClick={refreshHealth}>Run check</button>
         <div className="health-grid">
@@ -2277,7 +2284,7 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
           ].map(([label, ok]) => (
             <div className="health-row" key={String(label)}>
               <span>{label}</span>
-              <strong className={`status ${ok ? "paid" : "waitlist"}`}>{ok ? "OK" : "Missing"}</strong>
+              <strong className={`status ${ok ? "paid" : "waitlist"}`}>{healthStatus ? (ok ? "OK" : "Missing") : "Checking"}</strong>
             </div>
           ))}
         </div>
