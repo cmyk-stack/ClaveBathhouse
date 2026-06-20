@@ -193,7 +193,6 @@ async function removeLegacyDemoData() {
         FROM clave_customers
         WHERE lower(email) IN ('jon@example.com', 'mia@example.com', 'shane@example.com')
           OR lower(email) LIKE 'codex-%@example.com'
-          OR lower(email) LIKE 'release-%@example.com'
       )
   `;
 
@@ -201,14 +200,12 @@ async function removeLegacyDemoData() {
     DELETE FROM clave_bookings
     WHERE id IN ('b1', 'b2', 'b3')
       OR session_id IN ('s1', 's2', 's3')
-      OR session_id LIKE 'release-%'
       OR customer_id IN ('c1', 'c2', 'c3')
       OR customer_id IN (
         SELECT id
         FROM clave_customers
         WHERE lower(email) IN ('jon@example.com', 'mia@example.com', 'shane@example.com')
           OR lower(email) LIKE 'codex-%@example.com'
-          OR lower(email) LIKE 'release-%@example.com'
       )
   `;
 
@@ -223,14 +220,12 @@ async function removeLegacyDemoData() {
       OR booking_id LIKE '%-s1'
       OR booking_id LIKE '%-s2'
       OR booking_id LIKE '%-s3'
-      OR booking_id LIKE '%-release-%'
       OR customer_id IN ('c1', 'c2', 'c3')
       OR customer_id IN (
         SELECT id
         FROM clave_customers
         WHERE lower(email) IN ('jon@example.com', 'mia@example.com', 'shane@example.com')
           OR lower(email) LIKE 'codex-%@example.com'
-          OR lower(email) LIKE 'release-%@example.com'
       )
   `;
 
@@ -242,13 +237,7 @@ async function removeLegacyDemoData() {
         FROM clave_customers
         WHERE lower(email) IN ('jon@example.com', 'mia@example.com', 'shane@example.com')
           OR lower(email) LIKE 'codex-%@example.com'
-          OR lower(email) LIKE 'release-%@example.com'
       )
-  `;
-
-  await sql`
-    DELETE FROM clave_sessions
-    WHERE id LIKE 'release-%'
   `;
 
   await sql`
@@ -256,7 +245,6 @@ async function removeLegacyDemoData() {
     WHERE id IN ('c1', 'c2', 'c3')
       OR lower(email) IN ('jon@example.com', 'mia@example.com', 'shane@example.com')
       OR lower(email) LIKE 'codex-%@example.com'
-      OR lower(email) LIKE 'release-%@example.com'
   `;
 }
 
