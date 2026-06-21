@@ -878,21 +878,20 @@ export function App() {
     if (!target) return;
 
     const session = sessions.find((item) => item.id === target.sessionId);
-    if (!session) return;
 
     if (target.status !== "confirmed" && target.status !== "waitlist") {
       pushNotice("sms", "Cancellation unavailable", "Only confirmed or waitlisted bookings can be cancelled.");
       return;
     }
 
-    const sessionStart = sessionStartsAt(session);
+    const sessionStart = session ? sessionStartsAt(session) : null;
     const policyDeadline = new Date();
-    if (sessionStart.getTime() - policyDeadline.getTime() < 6 * 60 * 60 * 1000) {
+    if (!canUseStaffTools && (!sessionStart || sessionStart.getTime() - policyDeadline.getTime() < 6 * 60 * 60 * 1000)) {
       pushNotice("sms", "Cancellation blocked", "This booking is inside the six hour cancellation window.");
       return;
     }
 
-    const sessionLabel = `${getSessionType(session.typeId).name} on ${session.date} at ${session.time}`;
+    const sessionLabel = session ? `${getSessionType(session.typeId).name} on ${session.date} at ${session.time}` : `Booking ${target.id}`;
     const confirmed = window.confirm(`Cancel this booking?\n\n${sessionLabel}\n\nThis cannot be undone.`);
     if (!confirmed) return;
 
