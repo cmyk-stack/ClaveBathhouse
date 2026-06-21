@@ -966,8 +966,8 @@ button.quiet {
 
 .schedule-publisher {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: 1fr;
+  gap: 10px;
   padding: 12px;
   border: 1px solid rgba(38, 32, 25, 0.11);
   border-radius: 18px;
@@ -976,7 +976,6 @@ button.quiet {
 
 .schedule-publisher > div {
   display: grid;
-  grid-column: 1 / -1;
   gap: 2px;
 }
 
@@ -996,10 +995,6 @@ button.quiet {
   gap: 4px;
 }
 
-.schedule-publisher button {
-  grid-column: 1 / -1;
-}
-
 .schedule-toolbar {
   display: grid;
   grid-template-columns: 1fr;
@@ -1008,13 +1003,17 @@ button.quiet {
 
 .week-stepper {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: 1fr;
   gap: 8px;
 }
 
 .week-stepper button,
 .week-stepper input {
   min-height: 38px;
+}
+
+.week-stepper button {
+  width: 100%;
 }
 
 .schedule-week {
@@ -1446,13 +1445,26 @@ small,
   justify-self: start;
 }
 
-@media (min-width: 900px) {
+@media (min-width: 640px) {
   .schedule-publisher {
-    grid-template-columns: 1.25fr repeat(7, minmax(92px, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: end;
   }
 
-  .schedule-publisher > div,
+  .schedule-publisher button {
+    grid-column: 1 / -1;
+  }
+
+  .week-stepper {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+}
+
+@media (min-width: 1100px) {
+  .schedule-publisher {
+    grid-template-columns: 1.25fr repeat(7, minmax(92px, 1fr));
+  }
+
   .schedule-publisher button {
     grid-column: auto;
   }
