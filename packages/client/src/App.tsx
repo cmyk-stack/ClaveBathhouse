@@ -886,7 +886,9 @@ export function App() {
     const session = sessions.find((item) => item.id === target.sessionId);
 
     if (target.status !== "confirmed" && target.status !== "waitlist") {
-      pushNotice("sms", "Cancellation unavailable", "Only confirmed or waitlisted bookings can be cancelled.");
+      const message = target.status === "checked-in" ? "Checked-in visits cannot be cancelled." : "Only confirmed or waitlisted bookings can be cancelled.";
+      setOperationalMessage(message);
+      pushNotice("sms", "Cancellation unavailable", message);
       return;
     }
 

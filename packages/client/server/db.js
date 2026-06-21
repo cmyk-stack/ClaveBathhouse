@@ -1065,7 +1065,7 @@ export async function cancelBookingRecord({ bookingId, session, role }) {
           SELECT b.id, b.session_id, b.customer_id, c.name AS customer_name, b.status, b.paid_cents, b.payment_id, b.created_at, s.starts_at
           FROM clave_bookings b
           JOIN clave_customers c ON c.id = b.customer_id
-          JOIN clave_sessions s ON s.id = b.session_id
+          LEFT JOIN clave_sessions s ON s.id = b.session_id
           WHERE b.id = ${bookingId}
           LIMIT 1
         `
@@ -1073,14 +1073,29 @@ export async function cancelBookingRecord({ bookingId, session, role }) {
           SELECT b.id, b.session_id, b.customer_id, c.name AS customer_name, b.status, b.paid_cents, b.payment_id, b.created_at, s.starts_at
           FROM clave_bookings b
           JOIN clave_customers c ON c.id = b.customer_id
-          JOIN clave_sessions s ON s.id = b.session_id
+          LEFT JOIN clave_sessions s ON s.id = b.session_id
           WHERE b.id = ${bookingId} AND b.customer_id = ${session.customerId}
           LIMIT 1
         `;
 
   const target = targetResult.rows[0];
   if (!target) return null;
-  if (role !== "admin" && role !== "staff" && new Date(target.starts_at).getTime() - Date.now() < 6 * 60 * 60 * 1000) {
+  if (target.status === "cancelled") {
+    const error = new Error("That booking is already cancelled.");
+    error.code = "booking_already_cancelled";
+    throw error;
+  }
+  if (target.status === "checked-in") {
+    const error = new Error("Checked-in visits cannot be cancelled.");
+    error.code = "booking_checked_in";
+    throw error;
+  }
+  if (target.status !== "confirmed" && target.status !== "waitlist") {
+    const error = new Error("Only confirmed or waitlisted bookings can be cancelled.");
+    error.code = "booking_not_cancellable";
+    throw error;
+  }
+  if (role !== "admin" && role !== "staff" && target.starts_at && new Date(target.starts_at).getTime() - Date.now() < 6 * 60 * 60 * 1000) {
     const error = new Error("This booking is inside the six hour cancellation window.");
     error.code = "cancel_window_closed";
     throw error;
@@ -1135,7 +1150,7 @@ export async function cancelBookingRecord({ bookingId, session, role }) {
     SELECT cancelled.*, ${target.customer_name} AS customer_name
     FROM cancelled
   `;
-  return bookingFromRow(cancelledResult.rows[0]);
+  return cancelledResult.rows[0] ? bookingFromRow(cancelledResult.rows[0]) : null;
 }
 
 export async function checkInBookingRecord({ bookingId }) {
@@ -1184,6 +1199,14 @@ export function sendError(response, error) {
   if (error?.code === "cancel_window_closed") {
     response.status(409).json({
       error: "cancel_window_closed",
+      message: error.message
+    });
+    return;
+  }
+
+  if (["booking_already_cancelled", "booking_checked_in", "booking_not_cancellable"].includes(error?.code)) {
+    response.status(409).json({
+      error: error.code,
       message: error.message
     });
     return;
