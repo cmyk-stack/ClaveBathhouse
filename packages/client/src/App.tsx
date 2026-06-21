@@ -350,6 +350,12 @@ function messageFromError(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
+function defaultViewForRole(role: Role): AppView {
+  if (role === "admin") return "admin";
+  if (role === "staff") return "staff";
+  return "home";
+}
+
 export function App() {
   const persistedState = useMemo(() => readPersistedState(), []);
   const [view, setView] = useState<AppView>(normalizeAppView(persistedState.view));
@@ -514,6 +520,7 @@ export function App() {
     setSelectedCustomerId(customer.id);
     setProfileName(customer.name);
     setProfilePhone(customer.phone);
+    setView(defaultViewForRole(customer.role));
     setCustomers((current) => {
       const withoutCustomer = current.filter((item) => item.id !== customer.id);
       return [customer, ...withoutCustomer];
@@ -568,7 +575,7 @@ export function App() {
         setOperationalMessage("Booking data could not be loaded. Check the app connection and try again.");
       } else {
         setSyncStatus("error");
-        setOperationalMessage(messageFromError(error, "Bookings could not be loaded from Neon."));
+        setOperationalMessage(messageFromError(error, "We could not load the latest availability. Please try again."));
       }
     } finally {
       setIsLoadingOperations(false);
@@ -787,15 +794,15 @@ export function App() {
       }
       if (latestBookings) setBookings(latestBookings);
       setSelectedSessions([]);
-      const paymentNote = paidTotal > 0 ? ` Demo payment approved for ${formatCurrency(paidTotal)}.` : creditsUsed > 0 ? ` ${creditsUsed} credit used.` : "";
+      const paymentNote = paidTotal > 0 ? ` Payment approved for ${formatCurrency(paidTotal)}.` : creditsUsed > 0 ? ` ${creditsUsed} credit used.` : "";
       const waitlistNote = waitlisted > 0 ? ` ${waitlisted} visit${waitlisted > 1 ? "s are" : " is"} on the waitlist.` : "";
       setBookingFeedback({ tone: "success", message: `Booking saved.${paymentNote}${waitlistNote}` });
-      pushNotice("email", "Booking confirmation", `Your Clave Bathhouse booking was recorded in Neon.${paymentNote}`);
+      pushNotice("email", "Booking confirmed", `Your Clave Bathhouse visit is booked.${paymentNote}`);
     } catch (error) {
-      const message = messageFromError(error, "Booking could not be saved in Neon.");
+      const message = messageFromError(error, "We could not complete that booking. Please try another time.");
       setOperationalMessage(message);
       setBookingFeedback({ tone: "error", message });
-      pushNotice("sms", "Booking not saved", message);
+      pushNotice("sms", "Booking not completed", message);
     } finally {
       setBusyAction("");
     }
@@ -861,13 +868,13 @@ export function App() {
       const result = await postJson<BookingsResponse>("/api/bookings", { action: "cancel", bookingId });
       applyOperationalResponse(result);
     } catch (error) {
-      setOperationalMessage(messageFromError(error, "Booking could not be cancelled in Neon."));
-      pushNotice("sms", "Cancellation not saved", messageFromError(error, "Booking could not be cancelled in Neon."));
+      setOperationalMessage(messageFromError(error, "We could not cancel that booking. Please try again."));
+      pushNotice("sms", "Cancellation not completed", messageFromError(error, "We could not cancel that booking. Please try again."));
       return;
     } finally {
       setBusyAction("");
     }
-    const refundNote = target.paymentId === "membership-credit" ? " One credit was returned." : target.paid > 0 ? " Demo payment was refunded." : "";
+    const refundNote = target.paymentId === "membership-credit" ? " One credit was returned." : target.paid > 0 ? " Payment was refunded." : "";
     pushNotice("email", "Booking cancelled", `${target.customerName}'s booking was cancelled.${refundNote}`);
   }
 
@@ -878,8 +885,8 @@ export function App() {
       const result = await postJson<BookingsResponse>("/api/bookings", { action: "check-in", bookingId });
       applyOperationalResponse(result);
     } catch (error) {
-      setOperationalMessage(messageFromError(error, "Check-in could not be saved in Neon."));
-      pushNotice("sms", "Check-in not saved", messageFromError(error, "Check-in could not be saved in Neon."));
+      setOperationalMessage(messageFromError(error, "Check-in could not be completed."));
+      pushNotice("sms", "Check-in not completed", messageFromError(error, "Check-in could not be completed."));
       return;
     } finally {
       setBusyAction("");
@@ -901,13 +908,13 @@ export function App() {
       const result = await postJson<ProfileResponse>("/api/profile", { action: "membership", membershipId: plan.id });
       if (result.customer) mergeCustomer(result.customer);
       if (result.transactions) setTransactions(result.transactions);
-      setPassFeedback({ tone: "success", message: `${plan.name} is active. Demo payment was approved.` });
-      pushNotice("email", "Membership updated", `${plan.name} is active. Demo payment was approved.`);
+      setPassFeedback({ tone: "success", message: `${plan.name} is active. Payment approved.` });
+      pushNotice("email", "Membership updated", `${plan.name} is active. Payment approved.`);
     } catch (error) {
-      const message = messageFromError(error, "Membership could not be updated in Neon.");
+      const message = messageFromError(error, "Membership could not be updated. Please try again.");
       setOperationalMessage(message);
       setPassFeedback({ tone: "error", message });
-      pushNotice("sms", "Membership not saved", message);
+      pushNotice("sms", "Membership not updated", message);
     } finally {
       setBusyAction("");
     }
@@ -935,11 +942,11 @@ export function App() {
       }
       if (result.transactions) setTransactions(result.transactions);
       if (mode === "credit") {
-        const message = `${result.creditsAdded ?? 1} visit credit added to your account. Demo payment approved.`;
+        const message = `${result.creditsAdded ?? 1} visit credit added to your account. Payment approved.`;
         setPassFeedback({ tone: "success", message });
         pushNotice("push", "Credit added", message);
       } else {
-        const message = `Gift voucher ${result.voucher?.code ?? ""} was sent to ${recipientEmail}. Demo payment approved.`;
+        const message = `Gift voucher ${result.voucher?.code ?? ""} was sent to ${recipientEmail}. Payment approved.`;
         setPassFeedback({ tone: "success", message });
         pushNotice("email", "Voucher sent", message);
       }
@@ -994,11 +1001,11 @@ export function App() {
         mergeCustomer(result.customer);
       }
       setSyncStatus("synced");
-      pushNotice("push", "Profile saved", "Personal details were updated in Neon.");
+      pushNotice("push", "Profile saved", "Personal details were updated.");
     } catch (error) {
       setSyncStatus("error");
-      setOperationalMessage(messageFromError(error, "Profile could not be saved in Neon."));
-      pushNotice("sms", "Profile not saved", messageFromError(error, "Profile could not be saved in Neon."));
+      setOperationalMessage(messageFromError(error, "Profile could not be saved. Please try again."));
+      pushNotice("sms", "Profile not saved", messageFromError(error, "Profile could not be saved. Please try again."));
       return;
     } finally {
       setBusyAction("");
@@ -1217,17 +1224,20 @@ export function App() {
                 {(isLoadingOperations || busyAction || operationalMessage) && (
                   <div className={`operation-banner ${syncStatus === "error" ? "error" : ""}`}>
                     {isLoadingOperations
-                      ? "Loading live booking data..."
+                      ? "Checking availability..."
                       : busyAction
-                        ? "Saving to Neon..."
+                        ? "Saving..."
                         : operationalMessage}
                   </div>
                 )}
 
                 {view === "home" && (
               <HomeWorkspace
+                allBookings={bookings}
                 bookings={customerActiveBookings}
                 currentCustomer={currentCustomer}
+                isLoading={isLoadingOperations && sessions.length === 0}
+                locations={locations}
                 setView={goToView}
                 sessions={sessions}
               />
@@ -1240,6 +1250,7 @@ export function App() {
                 busyAction={busyAction}
                 currentCustomer={currentCustomer}
                 handleCheckout={handleCheckout}
+                isLoading={isLoadingOperations && sessions.length === 0}
                 locations={locations}
                 selectedDate={selectedDate}
                 selectedLocationId={selectedLocationId}
@@ -1278,7 +1289,7 @@ export function App() {
                 installPromptReady={Boolean(installPrompt)}
                 isOnline={isOnline}
                 isStandalone={isStandalone}
-                notices={notices}
+                notices={canUseStaffTools ? notices : []}
                 onInstallApp={handleInstallApp}
                 pwaMessage={pwaMessage}
                 profileName={profileName}
@@ -1541,6 +1552,7 @@ type CustomerWorkspaceProps = {
   busyAction: BusyAction;
   currentCustomer: Customer;
   handleCheckout: () => void;
+  isLoading: boolean;
   locations: Location[];
   selectedDate: string;
   selectedLocationId: string | null;
@@ -1553,13 +1565,19 @@ type CustomerWorkspaceProps = {
 };
 
 function HomeWorkspace({
+  allBookings,
   bookings,
   currentCustomer,
+  isLoading,
+  locations,
   sessions,
   setView
 }: {
+  allBookings: Booking[];
   bookings: Booking[];
   currentCustomer: Customer;
+  isLoading: boolean;
+  locations: Location[];
   sessions: Session[];
   setView: (view: AppView) => void;
 }) {
@@ -1567,26 +1585,39 @@ function HomeWorkspace({
   const orderedSessions = [...sessions].sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`));
   const nextSession = nextBooking ? sessions.find((session) => session.id === nextBooking.sessionId) : orderedSessions[0];
   const nextAvailable = orderedSessions[0];
+  const nextLocation = nextAvailable ? locations.find((location) => location.id === (nextAvailable.locationId ?? "scarborough")) : null;
+  const nextAvailableType = nextAvailable ? getSessionType(nextAvailable.typeId) : null;
+  const nextBookingLocation = nextSession ? locations.find((location) => location.id === (nextSession.locationId ?? "scarborough")) : null;
 
   return (
-    <div className="workspace-grid">
+    <div className="workspace-grid customer-home">
       <section className="surface welcome-card">
         <div className="section-head">
           <div>
-            <p className="eyebrow">Next visit</p>
-            <h3>{nextBooking && nextSession ? getSessionType(nextSession.typeId).name : "No booking yet"}</h3>
+            <p className="eyebrow">{nextBooking && nextSession ? "Next visit" : "Book your next reset"}</p>
+            <h3>{nextBooking && nextSession ? getSessionType(nextSession.typeId).name : nextAvailableType?.name ?? "Find a time"}</h3>
           </div>
           <span className="pill">{currentCustomer.credits} credits</span>
         </div>
         {nextBooking && nextSession ? (
           <div className="visit-card">
             <strong>{nextSession.date} at {nextSession.time}</strong>
-            <span>{nextSession.capacity - activeBookingsFor(nextSession.id, bookings).length} spots still open</span>
+            <span>{nextBookingLocation?.name ?? "Clave Bathhouse"} - {nextSession.capacity - activeBookingsFor(nextSession.id, allBookings).length} spots still open</span>
+          </div>
+        ) : isLoading ? (
+          <div className="visit-card loading-card">
+            <strong>Finding the next available session...</strong>
+            <span>Checking live availability.</span>
+          </div>
+        ) : nextAvailable && nextAvailableType ? (
+          <div className="visit-card next-available-card">
+            <strong>{nextAvailable.date} at {nextAvailable.time}</strong>
+            <span>{nextLocation?.name ?? "Clave Bathhouse"} - {nextAvailable.capacity - activeBookingsFor(nextAvailable.id, allBookings).length} spots open</span>
           </div>
         ) : (
           <div className="visit-card">
             <strong>Ready when you are</strong>
-            <span>{nextAvailable ? `Next available ${nextAvailable.date} at ${nextAvailable.time}` : "No sessions are available yet."}</span>
+            <span>New times are being prepared.</span>
           </div>
         )}
         <button onClick={() => setView("book")}>Book visit</button>
@@ -1614,6 +1645,7 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
     busyAction,
     currentCustomer,
     handleCheckout,
+    isLoading,
     locations,
     selectedDate,
     selectedLocationId,
@@ -1634,6 +1666,8 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
   const availableDates = Array.from(new Set(sessionsForFilters.map((session) => session.date))).sort();
   const nextAvailableDate = availableDates.find((date) => date >= selectedDate) ?? availableDates[0];
   const displayedSessions = sessionsForFilters.filter((session) => session.date === selectedDate);
+  const availableDateKey = availableDates.join("|");
+  const dateCounts = new Map(availableDates.map((date) => [date, sessionsForFilters.filter((session) => session.date === date).length]));
   const selectedSessionDetails = selectedSessions
     .map((sessionId) => allSessions.find((session) => session.id === sessionId))
     .filter((session): session is Session => Boolean(session));
@@ -1647,6 +1681,11 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
     selectedSessionDetails.filter((session) => activeBookingsFor(session.id, allBookings).length < session.capacity).length
   );
   const waitlistSelected = selectedSessionDetails.filter((session) => activeBookingsFor(session.id, allBookings).length >= session.capacity).length;
+
+  useEffect(() => {
+    if (!selectedLocation || availableDates.length === 0 || availableDates.includes(selectedDate)) return;
+    setSelectedDate(nextAvailableDate);
+  }, [availableDateKey, nextAvailableDate, selectedDate, selectedLocation, setSelectedDate]);
 
   if (!selectedLocation) {
     return <LocationsWorkspace locations={locations} onSelectLocation={setSelectedLocationId} />;
@@ -1683,16 +1722,22 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
           <div className="date-shortcuts" aria-label="Available dates">
             {availableDates.slice(0, 6).map((date) => (
               <button className={date === selectedDate ? "active" : ""} key={date} onClick={() => setSelectedDate(date)} type="button">
-                {formatShortDate(date)}
+                <span>{formatShortDate(date)}</span>
+                <strong>{dateCounts.get(date)} session{dateCounts.get(date) === 1 ? "" : "s"}</strong>
               </button>
             ))}
           </div>
         )}
 
         <div className="session-list">
-          {displayedSessions.length === 0 && (
+          {isLoading && allSessions.length === 0 && (
+            <div className="empty-action availability-loading">
+              <p className="muted">Checking live availability...</p>
+            </div>
+          )}
+          {!isLoading && displayedSessions.length === 0 && (
             <div className="empty-action">
-              <p className="muted">No sessions match this location and date.</p>
+              <p className="muted">{availableDates.length === 0 ? "No sessions are published for this bathhouse yet." : "No sessions match this date and filter."}</p>
               {nextAvailableDate && nextAvailableDate !== selectedDate && (
                 <button className="quiet" onClick={() => setSelectedDate(nextAvailableDate)} type="button">
                   Show {formatShortDate(nextAvailableDate)}
@@ -1738,7 +1783,7 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
 
         <div className="checkout-bar">
           <div>
-            <strong>{selectedDue > 0 ? `${formatCurrency(selectedDue)} demo payment` : creditsApplied > 0 ? "Credit will be used" : "No charge today"}</strong>
+            <strong>{selectedDue > 0 ? `${formatCurrency(selectedDue)} due today` : creditsApplied > 0 ? "Credit will be used" : "No charge today"}</strong>
             <p>
               {selectedSessions.length} selected
               {creditsApplied > 0 ? ` - ${creditsApplied} credit${creditsApplied > 1 ? "s" : ""}` : ""}
@@ -2035,11 +2080,11 @@ function ProfileWorkspace({
         </div>
         <div className="pwa-status-row">
           <span className={`status ${syncStatus === "synced" ? "paid" : syncStatus === "error" ? "waitlist" : ""}`}>
-            {syncStatus === "syncing" ? "Syncing" : syncStatus === "synced" ? "Synced" : syncStatus === "error" ? "Connection issue" : "Ready"}
+            {syncStatus === "syncing" ? "Updating" : syncStatus === "synced" ? "Ready" : syncStatus === "error" ? "Connection issue" : "Ready"}
           </span>
-          <span className="pill">Offline cache</span>
+          <span className="pill">Saved on this device</span>
         </div>
-        <p>{pwaMessage}</p>
+        <p>{isStandalone ? "Clave is installed on this device." : pwaMessage}</p>
         <button className="quiet" onClick={onInstallApp}>{isStandalone ? "Installed" : "Install app"}</button>
       </section>
 

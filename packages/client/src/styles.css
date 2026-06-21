@@ -414,6 +414,34 @@ button.quiet {
   font-size: 0.86rem;
 }
 
+.welcome-card .visit-card {
+  background: rgba(255, 248, 236, 0.12);
+}
+
+.welcome-card .visit-card span {
+  color: rgba(255, 248, 236, 0.74);
+}
+
+.loading-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.loading-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 248, 236, 0.14), transparent);
+  transform: translateX(-100%);
+  animation: shimmer 1.4s infinite;
+}
+
+@keyframes shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
 .pwa-card {
   display: grid;
   gap: 12px;
@@ -497,6 +525,11 @@ button.quiet {
 
 .session-list .muted {
   padding: 12px;
+}
+
+.availability-loading {
+  border-radius: 16px;
+  background: rgba(238, 227, 210, 0.74);
 }
 
 .booking-feedback {
@@ -716,6 +749,8 @@ button.quiet {
 }
 
 .date-shortcuts button {
+  display: grid;
+  gap: 2px;
   min-height: 34px;
   flex: 1 1 88px;
   border: 1px solid rgba(38, 32, 25, 0.1);
@@ -723,11 +758,23 @@ button.quiet {
   color: #2b2118;
   font-size: 0.72rem;
   padding: 0.44rem 0.55rem;
+  text-align: left;
 }
 
 .date-shortcuts button.active {
   background: #2a211b;
   color: #fffaf1;
+}
+
+.date-shortcuts button span {
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.date-shortcuts button strong {
+  font-size: 0.62rem;
+  font-weight: 750;
+  opacity: 0.74;
 }
 
 .empty-action {
