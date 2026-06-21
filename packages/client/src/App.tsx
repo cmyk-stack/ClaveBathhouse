@@ -293,6 +293,12 @@ function dateStringFromParts(year: number, month: number, day: number) {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
+function addDays(date: string, days: number) {
+  const parsed = new Date(`${date}T12:00:00+08:00`);
+  parsed.setDate(parsed.getDate() + days);
+  return parsed.toISOString().slice(0, 10);
+}
+
 function calendarDaysForMonth(date: string) {
   const [year, month] = date.split("-").map(Number);
   const firstDay = new Date(year, month - 1, 1);
@@ -2303,6 +2309,7 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
   const [bookingFilter, setBookingFilter] = useState<BookingStatus | "all">("all");
   const [bookingSearch, setBookingSearch] = useState("");
   const [scheduleLocationFilter, setScheduleLocationFilter] = useState("all");
+  const [scheduleWeekStart, setScheduleWeekStart] = useState(() => localDateAfter(0));
   const [userSearch, setUserSearch] = useState("");
   const [userRoleFilter, setUserRoleFilter] = useState<Role | "all">("all");
   const activeBookings = bookings.filter((booking) => booking.status !== "cancelled");
@@ -2310,7 +2317,14 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
   const checkedInBookings = bookings.filter((booking) => booking.status === "checked-in");
   const paidTotal = transactions.filter((transaction) => transaction.status === "paid").reduce((sum, transaction) => sum + transaction.amount, 0);
   const refundedTotal = transactions.filter((transaction) => transaction.status === "refunded").reduce((sum, transaction) => sum + transaction.amount, 0);
-  const filteredSessions = sessions.filter((session) => scheduleLocationFilter === "all" || (session.locationId ?? "scarborough") === scheduleLocationFilter);
+  const scheduleDays = Array.from({ length: 7 }, (_, index) => addDays(scheduleWeekStart, index));
+  const scheduleLocations = scheduleLocationFilter === "all" ? locations : locations.filter((location) => location.id === scheduleLocationFilter);
+  const weekSessions = sessions
+    .filter((session) => {
+      const matchesLocation = scheduleLocationFilter === "all" || (session.locationId ?? "scarborough") === scheduleLocationFilter;
+      return matchesLocation && session.date >= scheduleDays[0] && session.date <= scheduleDays[6];
+    })
+    .sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`));
   const filteredBookings = bookings.filter((booking) => {
     const session = sessionById.get(booking.sessionId);
     const haystack = `${booking.customerName} ${booking.status} ${session ? `${getSessionType(session.typeId).name} ${session.date} ${session.time}` : booking.sessionId}`.toLowerCase();
@@ -2415,76 +2429,133 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
       <section className="surface">
         <div className="section-head">
           <div>
-            <p className="eyebrow">Configuration</p>
-            <h3>Session schedule</h3>
+            <p className="eyebrow">Schedule manager</p>
+            <h3>Publish and tune sessions</h3>
           </div>
+          <span className="pill">{weekSessions.length} this week</span>
         </div>
-        <form className="session-form" onSubmit={createSession}>
-          <select value={newLocationId} onChange={(event) => setNewLocationId(event.target.value)}>
-            {locations.map((location) => (
-              <option key={location.id} value={location.id}>
-                {location.name}
-              </option>
-            ))}
-          </select>
-          <select value={newTypeId} onChange={(event) => setNewTypeId(event.target.value)}>
-            {sessionTypes.map((type) => (
-              <option key={type.id} value={type.id}>
-                {type.name}
-              </option>
-            ))}
-          </select>
-          <label>
-            <span>Start date</span>
-            <input type="date" value={newDate} onChange={(event) => setNewDate(event.target.value)} />
-          </label>
-          <label>
-            <span>End date</span>
-            <input type="date" value={newEndDate} onChange={(event) => setNewEndDate(event.target.value)} />
-          </label>
-          <input type="time" value={newTime} onChange={(event) => setNewTime(event.target.value)} />
-          <input type="number" min={1} max={40} value={newCapacity} onChange={(event) => setNewCapacity(Number(event.target.value))} />
-          <input value={newPractitioner} onChange={(event) => setNewPractitioner(event.target.value)} placeholder="Practitioner" />
-          <button>{busyAction === "session" ? "Publishing" : "Publish range"}</button>
-        </form>
-        <div className="admin-filter-row">
-          <select value={scheduleLocationFilter} onChange={(event) => setScheduleLocationFilter(event.target.value)}>
-            <option value="all">All locations</option>
-            {locations.map((location) => (
-              <option key={location.id} value={location.id}>
-                {location.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="session-admin-list">
-          {filteredSessions.map((session) => (
-            <form className="session-admin-row" key={session.id} onSubmit={(event) => updateSession(event, session.id)}>
-              <select defaultValue={session.locationId ?? "scarborough"} name="locationId">
-                {locations.map((location) => (
-                  <option key={location.id} value={location.id}>
-                    {location.name}
-                  </option>
-                ))}
-              </select>
-              <select defaultValue={session.typeId} name="typeId">
-                {sessionTypes.map((type) => (
-                  <option key={type.id} value={type.id}>
-                    {type.name}
-                  </option>
-                ))}
-              </select>
-              <input defaultValue={session.date} name="date" type="date" />
-              <input defaultValue={session.time} name="time" type="time" />
-              <input defaultValue={session.capacity} min={1} name="capacity" type="number" />
-              <input defaultValue={session.practitioner} name="practitioner" placeholder="Practitioner" />
-              <span>{activeBookingsFor(session.id, bookings).length}/{session.capacity} booked, {waitlistFor(session.id, bookings).length} waitlist</span>
-              <button>Save</button>
-              <button className="quiet" onClick={() => deleteSession(session.id)} type="button">
-                Remove
-              </button>
-            </form>
-          ))}
+        <div className="schedule-manager">
+          <form className="schedule-publisher" onSubmit={createSession}>
+            <div>
+              <strong>Publish range</strong>
+              <span>Create or update the same session across multiple dates.</span>
+            </div>
+            <select value={newLocationId} onChange={(event) => setNewLocationId(event.target.value)}>
+              {locations.map((location) => (
+                <option key={location.id} value={location.id}>
+                  {location.name}
+                </option>
+              ))}
+            </select>
+            <select value={newTypeId} onChange={(event) => setNewTypeId(event.target.value)}>
+              {sessionTypes.map((type) => (
+                <option key={type.id} value={type.id}>
+                  {type.name}
+                </option>
+              ))}
+            </select>
+            <label>
+              <span>Start</span>
+              <input type="date" value={newDate} onChange={(event) => setNewDate(event.target.value)} />
+            </label>
+            <label>
+              <span>End</span>
+              <input type="date" value={newEndDate} onChange={(event) => setNewEndDate(event.target.value)} />
+            </label>
+            <input type="time" value={newTime} onChange={(event) => setNewTime(event.target.value)} />
+            <input type="number" min={1} max={40} value={newCapacity} onChange={(event) => setNewCapacity(Number(event.target.value))} />
+            <input value={newPractitioner} onChange={(event) => setNewPractitioner(event.target.value)} placeholder="Practitioner" />
+            <button>{busyAction === "session" ? "Publishing" : "Publish"}</button>
+          </form>
+
+          <div className="schedule-toolbar">
+            <div className="week-stepper">
+              <button className="quiet" onClick={() => setScheduleWeekStart(addDays(scheduleWeekStart, -7))} type="button">Previous</button>
+              <input type="date" value={scheduleWeekStart} onChange={(event) => setScheduleWeekStart(event.target.value)} />
+              <button className="quiet" onClick={() => setScheduleWeekStart(addDays(scheduleWeekStart, 7))} type="button">Next</button>
+            </div>
+            <select value={scheduleLocationFilter} onChange={(event) => setScheduleLocationFilter(event.target.value)}>
+              <option value="all">All locations</option>
+              {locations.map((location) => (
+                <option key={location.id} value={location.id}>
+                  {location.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="schedule-week">
+            {scheduleDays.map((day) => {
+              const sessionsForDay = weekSessions.filter((session) => session.date === day);
+              const bookedForDay = sessionsForDay.reduce((sum, session) => sum + activeBookingsFor(session.id, bookings).length, 0);
+              const capacityForDay = sessionsForDay.reduce((sum, session) => sum + session.capacity, 0);
+              return (
+                <section className="schedule-day" key={day}>
+                  <div className="schedule-day-head">
+                    <div>
+                      <strong>{formatShortDate(day)}</strong>
+                      <span>{sessionsForDay.length} session{sessionsForDay.length === 1 ? "" : "s"}</span>
+                    </div>
+                    <span className="pill">{bookedForDay}/{capacityForDay || 0}</span>
+                  </div>
+
+                  {scheduleLocations.map((location) => {
+                    const sessionsForLocation = sessionsForDay.filter((session) => (session.locationId ?? "scarborough") === location.id);
+                    if (sessionsForLocation.length === 0) return null;
+                    return (
+                      <div className="schedule-location-group" key={location.id}>
+                        <span>{location.name}</span>
+                        {sessionsForLocation.map((session) => {
+                          const activeCount = activeBookingsFor(session.id, bookings).length;
+                          const waitlistCount = waitlistFor(session.id, bookings).length;
+                          return (
+                            <form className="session-admin-card" key={session.id} onSubmit={(event) => updateSession(event, session.id)}>
+                              <div className="session-admin-summary">
+                                <strong>{getSessionType(session.typeId).name}</strong>
+                                <span>{session.time} - {session.practitioner}</span>
+                              </div>
+                              <div className="session-admin-meta">
+                                <span>{activeCount}/{session.capacity} booked</span>
+                                {waitlistCount > 0 && <span>{waitlistCount} waitlist</span>}
+                              </div>
+                              <details>
+                                <summary>Edit</summary>
+                                <div className="session-admin-fields">
+                                  <select defaultValue={session.locationId ?? "scarborough"} name="locationId">
+                                    {locations.map((locationOption) => (
+                                      <option key={locationOption.id} value={locationOption.id}>
+                                        {locationOption.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <select defaultValue={session.typeId} name="typeId">
+                                    {sessionTypes.map((type) => (
+                                      <option key={type.id} value={type.id}>
+                                        {type.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <input defaultValue={session.date} name="date" type="date" />
+                                  <input defaultValue={session.time} name="time" type="time" />
+                                  <input defaultValue={session.capacity} min={1} name="capacity" type="number" />
+                                  <input defaultValue={session.practitioner} name="practitioner" placeholder="Practitioner" />
+                                  <button>Save</button>
+                                  <button className="quiet" onClick={() => deleteSession(session.id)} type="button">
+                                    Remove
+                                  </button>
+                                </div>
+                              </details>
+                            </form>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                  {sessionsForDay.length === 0 && <p className="empty-state">No sessions published.</p>}
+                </section>
+              );
+            })}
+          </div>
         </div>
       </section>
       )}
