@@ -1005,7 +1005,41 @@ export async function createBookingRecord({ customer, sessionId, amountCents }) 
     SELECT inserted.*, ${customer.name} AS customer_name
     FROM inserted
   `;
-  if (!result.rows[0]) return null;
+  if (!result.rows[0]) {
+    const reason = await sql`
+      SELECT
+        EXISTS (
+          SELECT 1
+          FROM clave_sessions
+          WHERE id = ${sessionId}
+        ) AS session_exists,
+        EXISTS (
+          SELECT 1
+          FROM clave_sessions
+          WHERE id = ${sessionId}
+            AND starts_at > NOW()
+        ) AS session_is_future,
+        EXISTS (
+          SELECT 1
+          FROM clave_bookings
+          WHERE session_id = ${sessionId}
+            AND customer_id = ${customer.id}
+            AND status IN ('confirmed', 'waitlist', 'checked-in')
+        ) AS already_booked
+    `;
+    const row = reason.rows[0] ?? {};
+    if (row.already_booked) {
+      const error = new Error("You already have this visit booked.");
+      error.code = "booking_already_exists";
+      throw error;
+    }
+    if (!row.session_exists || !row.session_is_future) {
+      const error = new Error("That session is no longer available. Please choose another time.");
+      error.code = "booking_session_unavailable";
+      throw error;
+    }
+    return null;
+  }
   return bookingFromRow(result.rows[0]);
 }
 
@@ -1127,6 +1161,14 @@ export function sendError(response, error) {
   if (error?.code === "cancel_window_closed") {
     response.status(409).json({
       error: "cancel_window_closed",
+      message: error.message
+    });
+    return;
+  }
+
+  if (error?.code === "booking_already_exists" || error?.code === "booking_session_unavailable") {
+    response.status(409).json({
+      error: error.code,
       message: error.message
     });
     return;

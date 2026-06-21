@@ -203,6 +203,14 @@ function localDateAfter(days: number) {
   return date.toISOString().slice(0, 10);
 }
 
+function sessionStartsAt(session: Session) {
+  return new Date(`${session.date}T${session.time}:00+08:00`);
+}
+
+function isFutureSession(session: Session) {
+  return sessionStartsAt(session).getTime() > Date.now();
+}
+
 const initialSessions: Session[] = [];
 
 const plans: MembershipPlan[] = [
@@ -726,7 +734,7 @@ export function App() {
           const matchesDate = session.date === selectedDate;
           const matchesLocation = !selectedLocationId || (session.locationId ?? "scarborough") === selectedLocationId;
           const matchesType = selectedType === "all" || session.typeId === selectedType;
-          return matchesDate && matchesLocation && matchesType;
+          return matchesDate && matchesLocation && matchesType && isFutureSession(session);
         })
         .map((session) => session.id)
     );
@@ -803,6 +811,7 @@ export function App() {
       setOperationalMessage(message);
       setBookingFeedback({ tone: "error", message });
       pushNotice("sms", "Booking not completed", message);
+      void loadOperationalData();
     } finally {
       setBusyAction("");
     }
@@ -851,7 +860,7 @@ export function App() {
       return;
     }
 
-    const sessionStart = new Date(`${session.date}T${session.time}:00`);
+    const sessionStart = sessionStartsAt(session);
     const policyDeadline = new Date();
     if (sessionStart.getTime() - policyDeadline.getTime() < 6 * 60 * 60 * 1000) {
       pushNotice("sms", "Cancellation blocked", "This booking is inside the six hour cancellation window.");
@@ -1661,7 +1670,7 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
   const sessionsForFilters = allSessions.filter((session) => {
     const matchesLocation = !selectedLocationId || (session.locationId ?? "scarborough") === selectedLocationId;
     const matchesType = selectedType === "all" || session.typeId === selectedType;
-    return matchesLocation && matchesType;
+    return matchesLocation && matchesType && isFutureSession(session);
   });
   const availableDates = Array.from(new Set(sessionsForFilters.map((session) => session.date))).sort();
   const nextAvailableDate = availableDates.find((date) => date >= selectedDate) ?? availableDates[0];
