@@ -715,7 +715,8 @@ function isLegacyDemoCustomer(customer) {
 function isLegacyDemoBooking(booking) {
   const id = String(booking?.id ?? "").toLowerCase();
   const customerId = String(booking?.customerId ?? booking?.customer_id ?? "").toLowerCase();
-  return id === "b1" || id === "b2" || id === "b3" || customerId === "c2" || customerId === "c3";
+  const sessionId = String(booking?.sessionId ?? booking?.session_id ?? "").toLowerCase();
+  return id === "b1" || id === "b2" || id === "b3" || sessionId === "s1" || sessionId === "s2" || sessionId === "s3" || customerId === "c2" || customerId === "c3";
 }
 
 function sanitizeStoredState(payload) {
@@ -922,6 +923,7 @@ export async function listBookings({ customerId, role }) {
           FROM clave_bookings b
           JOIN clave_customers c ON c.id = b.customer_id
           WHERE b.id NOT IN ('b1', 'b2', 'b3')
+            AND b.session_id NOT IN ('s1', 's2', 's3')
             AND b.customer_id NOT IN ('c2', 'c3')
             AND lower(c.email) NOT IN ('jon@example.com', 'mia@example.com')
           ORDER BY b.created_at DESC
@@ -933,6 +935,7 @@ export async function listBookings({ customerId, role }) {
           WHERE b.customer_id = ${customerId}
             AND b.status <> 'cancelled'
             AND b.id NOT IN ('b1', 'b2', 'b3')
+            AND b.session_id NOT IN ('s1', 's2', 's3')
             AND b.customer_id NOT IN ('c2', 'c3')
             AND lower(c.email) NOT IN ('jon@example.com', 'mia@example.com')
           ORDER BY b.created_at DESC

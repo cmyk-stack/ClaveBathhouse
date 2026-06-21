@@ -326,6 +326,10 @@ function waitlistFor(sessionId: string, bookings: Booking[]) {
   return bookings.filter((booking) => booking.sessionId === sessionId && booking.status === "waitlist");
 }
 
+function isLegacyBooking(booking: Booking) {
+  return ["b1", "b2", "b3"].includes(booking.id) || ["s1", "s2", "s3"].includes(booking.sessionId);
+}
+
 function normalizeAppView(view?: AppView) {
   return view === "locations" ? "book" : view ?? "home";
 }
@@ -576,7 +580,7 @@ export function App() {
   }
 
   function applyOperationalResponse(result: { bookings?: Booking[]; customer?: Customer; customers?: Customer[]; transactions?: Transaction[] }) {
-    if (result.bookings) setBookings(result.bookings);
+    if (result.bookings) setBookings(result.bookings.filter((booking) => !isLegacyBooking(booking)));
     if (result.transactions) setTransactions(result.transactions);
     if (result.customers) setCustomers(result.customers);
     else mergeCustomer(result.customer);
@@ -593,7 +597,7 @@ export function App() {
     if (result.sessions) {
       setLiveSessions(result.sessions);
     }
-    if (result.bookings) setBookings(result.bookings);
+    if (result.bookings) setBookings(result.bookings.filter((booking) => !isLegacyBooking(booking)));
     if (result.customers) setCustomers(result.customers);
     if (result.transactions) setTransactions(result.transactions);
   }
