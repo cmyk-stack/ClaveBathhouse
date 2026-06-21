@@ -284,6 +284,26 @@ function formatShortDate(date: string) {
   return new Intl.DateTimeFormat("en-AU", { day: "numeric", month: "short", weekday: "short" }).format(parsed);
 }
 
+function formatMonthLabel(date: string) {
+  const parsed = new Date(`${date}T12:00:00+08:00`);
+  return new Intl.DateTimeFormat("en-AU", { month: "long", year: "numeric" }).format(parsed);
+}
+
+function dateStringFromParts(year: number, month: number, day: number) {
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function calendarDaysForMonth(date: string) {
+  const [year, month] = date.split("-").map(Number);
+  const firstDay = new Date(year, month - 1, 1);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const leadingBlanks = firstDay.getDay();
+  return [
+    ...Array.from({ length: leadingBlanks }, () => ""),
+    ...Array.from({ length: daysInMonth }, (_, index) => dateStringFromParts(year, month, index + 1))
+  ];
+}
+
 function getSessionType(typeId: string) {
   return sessionTypes.find((type) => type.id === typeId) ?? sessionTypes[0];
 }
@@ -1681,6 +1701,8 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
   const nextAvailableDate = availableDates.find((date) => date >= selectedDate) ?? availableDates[0];
   const displayedSessions = sessionsForFilters.filter((session) => session.date === selectedDate);
   const availableDateKey = availableDates.join("|");
+  const availableDateSet = new Set(availableDates);
+  const calendarDays = calendarDaysForMonth(selectedDate);
   const dateCounts = new Map(availableDates.map((date) => [date, sessionsForFilters.filter((session) => session.date === date).length]));
   const selectedSessionDetails = selectedSessions
     .map((sessionId) => allSessions.find((session) => session.id === sessionId))
@@ -1730,6 +1752,40 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
               </option>
             ))}
           </select>
+        </div>
+
+        <div className="availability-calendar" aria-label={`${formatMonthLabel(selectedDate)} availability`}>
+          <div className="availability-calendar-head">
+            <strong>{formatMonthLabel(selectedDate)}</strong>
+            <span>{availableDates.length} available day{availableDates.length === 1 ? "" : "s"}</span>
+          </div>
+          <div className="calendar-weekdays" aria-hidden="true">
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+              <span key={day}>{day}</span>
+            ))}
+          </div>
+          <div className="calendar-grid">
+            {calendarDays.map((date, index) => {
+              const hasSessions = Boolean(date && availableDateSet.has(date));
+              const isSelected = date === selectedDate;
+              const dayNumber = date ? Number(date.slice(-2)) : "";
+              return date ? (
+                <button
+                  aria-label={`${formatShortDate(date)}${hasSessions ? `, ${dateCounts.get(date)} available session${dateCounts.get(date) === 1 ? "" : "s"}` : ", no available sessions"}`}
+                  className={`${hasSessions ? "has-sessions" : ""} ${isSelected ? "selected" : ""}`.trim()}
+                  disabled={!hasSessions}
+                  key={date}
+                  onClick={() => setSelectedDate(date)}
+                  type="button"
+                >
+                  <strong>{dayNumber}</strong>
+                  {hasSessions && <span>{dateCounts.get(date)}</span>}
+                </button>
+              ) : (
+                <span className="calendar-empty" key={`blank-${index}`} />
+              );
+            })}
+          </div>
         </div>
 
         {availableDates.length > 0 && (

@@ -742,6 +742,107 @@ button.quiet {
   gap: 8px;
 }
 
+.availability-calendar {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(38, 32, 25, 0.1);
+  border-radius: 18px;
+  background: rgba(255, 252, 246, 0.7);
+}
+
+.availability-calendar-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.availability-calendar-head strong {
+  color: #2b2118;
+  font-size: 0.9rem;
+}
+
+.availability-calendar-head span {
+  color: #736858;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.calendar-weekdays,
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.calendar-weekdays span {
+  color: #8a7a66;
+  font-size: 0.62rem;
+  font-weight: 850;
+  text-align: center;
+}
+
+.calendar-grid button,
+.calendar-empty {
+  min-width: 0;
+  aspect-ratio: 1;
+}
+
+.calendar-grid button {
+  display: grid;
+  place-items: center;
+  gap: 1px;
+  min-height: 36px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: rgba(238, 233, 223, 0.62);
+  color: #8a7a66;
+  padding: 0;
+}
+
+.calendar-grid button strong {
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.calendar-grid button span {
+  display: block;
+  min-width: 14px;
+  border-radius: 999px;
+  background: rgba(42, 33, 27, 0.1);
+  color: #2b2118;
+  font-size: 0.55rem;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
+.calendar-grid button.has-sessions {
+  border-color: rgba(42, 33, 27, 0.16);
+  background: #eee2cf;
+  color: #2b2118;
+}
+
+.calendar-grid button.has-sessions strong {
+  font-weight: 950;
+}
+
+.calendar-grid button.selected {
+  background: #2a211b;
+  color: #fffaf1;
+}
+
+.calendar-grid button.selected span {
+  background: rgba(255, 250, 241, 0.18);
+  color: #fffaf1;
+}
+
+.calendar-grid button:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
 .date-shortcuts {
   display: flex;
   flex-wrap: wrap;
