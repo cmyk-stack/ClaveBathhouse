@@ -995,6 +995,13 @@ button.quiet {
   gap: 4px;
 }
 
+.schedule-publisher input,
+.schedule-publisher select,
+.schedule-publisher button {
+  width: 100%;
+  min-width: 0;
+}
+
 .schedule-toolbar {
   display: grid;
   grid-template-columns: 1fr;
@@ -1446,29 +1453,12 @@ small,
 }
 
 @media (min-width: 640px) {
-  .schedule-publisher {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-items: end;
-  }
-
-  .schedule-publisher button {
-    grid-column: 1 / -1;
-  }
-
   .week-stepper {
     grid-template-columns: auto minmax(0, 1fr) auto;
   }
 }
 
 @media (min-width: 1100px) {
-  .schedule-publisher {
-    grid-template-columns: 1.25fr repeat(7, minmax(92px, 1fr));
-  }
-
-  .schedule-publisher button {
-    grid-column: auto;
-  }
-
   .schedule-toolbar {
     grid-template-columns: minmax(320px, 0.65fr) minmax(220px, 0.35fr);
     align-items: center;
