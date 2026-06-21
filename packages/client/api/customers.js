@@ -1,15 +1,13 @@
 import { countAdmins, ensureSchema, listCustomers, recordAdminAudit, sendError, sendJson, updateCustomerRole } from "../server/db.js";
-import { requireRole, requireSession } from "../server/security.js";
+import { requireFreshRole } from "../server/roles.js";
 
 const allowedRoles = new Set(["customer", "staff", "admin"]);
 
 export default async function handler(request, response) {
   try {
-    const session = requireSession(request, response);
-    if (!session) return;
-    const adminSession = requireRole(request, response, ["admin"]);
-    if (!adminSession) return;
     await ensureSchema();
+    const adminSession = await requireFreshRole(request, response, ["admin"]);
+    if (!adminSession) return;
 
     if (request.method === "GET") {
       return sendJson(response, 200, { customers: await listCustomers() });

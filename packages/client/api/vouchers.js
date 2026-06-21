@@ -12,6 +12,9 @@ export default async function handler(request, response) {
     const session = requireSession(request, response);
     if (!session) return;
     await ensureSchema();
+    const currentCustomer = await findCustomerById(session.customerId);
+    if (!currentCustomer) return sendJson(response, 401, { error: "unauthorized", message: "Sign in to continue." });
+    const effectiveSession = { ...session, role: currentCustomer.role };
 
     if (request.body?.action === "redeem") {
       const code = String(request.body?.code ?? "").trim();
@@ -36,8 +39,7 @@ export default async function handler(request, response) {
       return sendJson(response, 400, { error: "bad_request", message: "Enter the recipient email address." });
     }
 
-    const customer = await findCustomerById(session.customerId);
-    if (!customer) return sendJson(response, 404, { error: "not_found", message: "Customer was not found." });
+    const customer = currentCustomer;
 
     const voucher = await createVoucherRecord({
       amountCents,
@@ -53,7 +55,7 @@ export default async function handler(request, response) {
         to: recipientEmail
       });
       return sendJson(response, 201, {
-        transactions: await listTransactions({ customerId: session.customerId, role: session.role }),
+        transactions: await listTransactions({ customerId: effectiveSession.customerId, role: effectiveSession.role }),
         voucher
       });
     }
@@ -63,7 +65,7 @@ export default async function handler(request, response) {
     return sendJson(response, 201, {
       creditsAdded: credits,
       customer: updatedCustomer,
-      transactions: await listTransactions({ customerId: session.customerId, role: session.role }),
+      transactions: await listTransactions({ customerId: effectiveSession.customerId, role: effectiveSession.role }),
       voucher
     });
   } catch (error) {

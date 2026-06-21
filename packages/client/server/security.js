@@ -6,7 +6,13 @@ const HANDOFF_TTL_SECONDS = 60;
 const PBKDF2_ITERATIONS = 210000;
 
 function getAuthSecret() {
-  return process.env.AUTH_SECRET || "local-dev-change-me";
+  if (process.env.AUTH_SECRET) return process.env.AUTH_SECRET;
+  if (process.env.VERCEL) {
+    const error = new Error("AUTH_SECRET is required in production.");
+    error.code = "auth_secret_not_configured";
+    throw error;
+  }
+  return "local-dev-change-me";
 }
 
 function base64UrlEncode(value) {

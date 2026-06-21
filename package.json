@@ -11,5 +11,9 @@
     "dev": "npm run dev --workspace @clave/client",
     "dev:server": "npm run dev --workspace @gravity/signal-server",
     "test": "npm run test --workspaces --if-present"
+  },
+  "overrides": {
+    "@xmldom/xmldom": "^0.8.13",
+    "ws": "^8.21.0"
   }
 }

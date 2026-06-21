@@ -1,5 +1,6 @@
 import { createSessionRecord, deleteSessionRecord, ensureSchema, listSessions, recordAdminAudit, sendError, sendJson, updateSessionRecord } from "../server/db.js";
-import { requireRole, requireSession } from "../server/security.js";
+import { requireFreshRole } from "../server/roles.js";
+import { requireSession } from "../server/security.js";
 
 function dateRange(startDate, endDate) {
   const startMatch = String(startDate ?? "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -29,7 +30,7 @@ export default async function handler(request, response) {
     }
 
     if (request.method === "POST") {
-      const adminSession = requireRole(request, response, ["admin"]);
+      const adminSession = await requireFreshRole(request, response, ["admin"]);
       if (!adminSession) return;
 
       const { action, endDate, session: nextSession, sessionId, startDate } = request.body ?? {};

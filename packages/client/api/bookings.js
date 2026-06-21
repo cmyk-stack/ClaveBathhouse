@@ -12,18 +12,22 @@ import {
   sendJson
 } from "../server/db.js";
 import { bookingEmailText, sendTransactionalEmail } from "../server/email.js";
-import { requireRole, requireSession } from "../server/security.js";
+import { requireFreshRole } from "../server/roles.js";
+import { requireSession } from "../server/security.js";
 
 export default async function handler(request, response) {
   try {
     const session = requireSession(request, response);
     if (!session) return;
     await ensureSchema();
+    const currentCustomer = await findCustomerById(session.customerId);
+    if (!currentCustomer) return sendJson(response, 401, { error: "unauthorized", message: "Sign in to continue." });
+    const effectiveSession = { ...session, role: currentCustomer.role };
 
     if (request.method === "GET") {
       return sendJson(response, 200, {
-        bookings: await listBookings({ customerId: session.customerId, role: session.role }),
-        transactions: await listTransactions({ customerId: session.customerId, role: session.role })
+        bookings: await listBookings({ customerId: effectiveSession.customerId, role: effectiveSession.role }),
+        transactions: await listTransactions({ customerId: effectiveSession.customerId, role: effectiveSession.role })
       });
     }
 
@@ -31,7 +35,7 @@ export default async function handler(request, response) {
       const { action, amountCents = 0, bookingId, sessionId } = request.body ?? {};
 
       if (action === "cancel") {
-        const booking = await cancelBookingRecord({ bookingId, session, role: session.role });
+        const booking = await cancelBookingRecord({ bookingId, session: effectiveSession, role: effectiveSession.role });
         if (!booking) return sendJson(response, 409, { error: "not_cancellable", message: "That booking is already cancelled or cannot be cancelled." });
         const customer = await findCustomerById(booking.customerId);
         await sendTransactionalEmail({
@@ -41,15 +45,15 @@ export default async function handler(request, response) {
         });
         return sendJson(response, 200, {
           booking,
-          bookings: await listBookings({ customerId: session.customerId, role: session.role }),
+          bookings: await listBookings({ customerId: effectiveSession.customerId, role: effectiveSession.role }),
           customer: await findCustomerById(booking.customerId),
-          customers: session.role === "admin" ? await listCustomers() : undefined,
-          transactions: await listTransactions({ customerId: session.customerId, role: session.role })
+          customers: effectiveSession.role === "admin" ? await listCustomers() : undefined,
+          transactions: await listTransactions({ customerId: effectiveSession.customerId, role: effectiveSession.role })
         });
       }
 
       if (action === "check-in") {
-        const staffSession = requireRole(request, response, ["staff", "admin"]);
+        const staffSession = await requireFreshRole(request, response, ["staff", "admin"]);
         if (!staffSession) return;
 
         const booking = await checkInBookingRecord({ bookingId });
@@ -62,12 +66,12 @@ export default async function handler(request, response) {
         });
         return sendJson(response, 200, {
           booking,
-          bookings: await listBookings({ customerId: session.customerId, role: session.role }),
-          transactions: await listTransactions({ customerId: session.customerId, role: session.role })
+          bookings: await listBookings({ customerId: staffSession.customerId, role: staffSession.role }),
+          transactions: await listTransactions({ customerId: staffSession.customerId, role: staffSession.role })
         });
       }
 
-      const customer = await findCustomerById(session.customerId);
+      const customer = currentCustomer;
       if (!customer) return sendJson(response, 404, { error: "not_found", message: "Customer was not found." });
       if (!sessionId) return sendJson(response, 400, { error: "bad_request", message: "Choose a session to book." });
 
@@ -87,9 +91,9 @@ export default async function handler(request, response) {
 
       return sendJson(response, 201, {
         booking,
-        bookings: await listBookings({ customerId: session.customerId, role: session.role }),
+        bookings: await listBookings({ customerId: effectiveSession.customerId, role: effectiveSession.role }),
         customer: await findCustomerById(customer.id),
-        transactions: await listTransactions({ customerId: session.customerId, role: session.role })
+        transactions: await listTransactions({ customerId: effectiveSession.customerId, role: effectiveSession.role })
       });
     }
 

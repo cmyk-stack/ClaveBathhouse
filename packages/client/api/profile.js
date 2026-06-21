@@ -22,6 +22,9 @@ export default async function handler(request, response) {
     const session = requireSession(request, response);
     if (!session) return;
     await ensureSchema();
+    const currentCustomer = await findCustomerById(session.customerId);
+    if (!currentCustomer) return sendJson(response, 401, { error: "unauthorized", message: "Sign in to continue." });
+    const effectiveSession = { ...session, role: currentCustomer.role };
 
     if (request.method !== "POST") {
       response.setHeader("Allow", "POST");
@@ -35,7 +38,7 @@ export default async function handler(request, response) {
         return sendJson(response, 400, { error: "bad_request", message: "Choose a valid membership." });
       }
 
-      const existingCustomer = await findCustomerById(session.customerId);
+      const existingCustomer = currentCustomer;
       if (!existingCustomer) return sendJson(response, 404, { error: "not_found", message: "Customer was not found." });
 
       const customer =
@@ -59,7 +62,7 @@ export default async function handler(request, response) {
       return sendJson(response, 200, {
         customer,
         state: await getStoredState(customer.id),
-        transactions: await listTransactions({ customerId: session.customerId, role: session.role })
+        transactions: await listTransactions({ customerId: effectiveSession.customerId, role: effectiveSession.role })
       });
     }
 

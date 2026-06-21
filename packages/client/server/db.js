@@ -179,7 +179,11 @@ async function ensureSchemaInternal() {
   }
 
   await seedFirstAdmin();
-  await seedDemoAdmin();
+  if (process.env.ENABLE_DEMO_ADMIN === "true") {
+    await seedDemoAdmin();
+  } else {
+    await disableDemoAdmin();
+  }
   await seedFutureSessions();
   await removeLegacyDemoData();
 }
@@ -300,6 +304,17 @@ async function seedDemoAdmin() {
       payment_method = EXCLUDED.payment_method,
       password_hash = EXCLUDED.password_hash,
       role = 'admin'
+  `;
+}
+
+async function disableDemoAdmin() {
+  await sql`
+    UPDATE clave_customers
+    SET role = 'customer',
+        password_hash = NULL,
+        payment_method = ''
+    WHERE lower(email) = lower(${demoAdmin.email})
+      OR id = 'demo-admin'
   `;
 }
 
@@ -1146,6 +1161,14 @@ export function sendError(response, error) {
     response.status(503).json({
       error: "database_not_configured",
       message: "Neon database is not configured. Set POSTGRES_URL in Vercel."
+    });
+    return;
+  }
+
+  if (error?.code === "auth_secret_not_configured") {
+    response.status(503).json({
+      error: "auth_secret_not_configured",
+      message: "Authentication is not configured. Set AUTH_SECRET in Vercel."
     });
     return;
   }
