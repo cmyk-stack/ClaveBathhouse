@@ -556,11 +556,16 @@ export function App() {
     else mergeCustomer(result.customer);
   }
 
+  function setLiveSessions(nextSessions: Session[]) {
+    const futureSessions = nextSessions.filter(isFutureSession);
+    setSessions(futureSessions);
+    const hasSelectedDate = futureSessions.some((session) => session.date === selectedDate);
+    if (!hasSelectedDate && futureSessions[0]) setSelectedDate(futureSessions[0].date);
+  }
+
   function applyLiveData(result: { bookings?: Booking[]; customers?: Customer[]; sessions?: Session[]; transactions?: Transaction[] }) {
     if (result.sessions) {
-      setSessions(result.sessions);
-      const hasSelectedDate = result.sessions.some((session) => session.date === selectedDate);
-      if (!hasSelectedDate && result.sessions[0]) setSelectedDate(result.sessions[0].date);
+      setLiveSessions(result.sessions);
     }
     if (result.bookings) setBookings(result.bookings);
     if (result.customers) setCustomers(result.customers);
@@ -1036,7 +1041,7 @@ export function App() {
     setOperationalMessage("");
     try {
       const result = await postJson<SessionsResponse>("/api/sessions", { session });
-      if (result.sessions) setSessions(result.sessions);
+      if (result.sessions) setLiveSessions(result.sessions);
     } catch (error) {
       setOperationalMessage(messageFromError(error, "Session could not be created in Neon."));
       pushNotice("sms", "Schedule not saved", messageFromError(error, "Session could not be created in Neon."));
@@ -1067,7 +1072,7 @@ export function App() {
         session,
         startDate: newDate
       });
-      if (result.sessions) setSessions(result.sessions);
+      if (result.sessions) setLiveSessions(result.sessions);
     } catch (error) {
       const message = messageFromError(error, "Schedule range could not be created in Neon.");
       setOperationalMessage(message);
@@ -1095,8 +1100,8 @@ export function App() {
     setOperationalMessage("");
     try {
       const result = await postJson<SessionsResponse>("/api/sessions", { action: "update", session, sessionId });
-      if (result.sessions) setSessions(result.sessions);
-      else if (result.session) setSessions((current) => current.map((item) => (item.id === sessionId ? result.session! : item)));
+      if (result.sessions) setLiveSessions(result.sessions);
+      else if (result.session) setLiveSessions(sessions.map((item) => (item.id === sessionId ? result.session! : item)));
       pushNotice("push", "Session saved", "The live timetable was updated.");
     } catch (error) {
       setOperationalMessage(messageFromError(error, "Session could not be updated in Neon."));
@@ -1112,7 +1117,7 @@ export function App() {
     setOperationalMessage("");
     try {
       const result = await postJson<SessionsResponse>("/api/sessions", { action: "delete", sessionId });
-      if (result.sessions) setSessions(result.sessions);
+      if (result.sessions) setLiveSessions(result.sessions);
       pushNotice("push", "Session removed", "The timetable was updated.");
     } catch (error) {
       setOperationalMessage(messageFromError(error, "Session could not be removed in Neon."));
@@ -1591,8 +1596,8 @@ function HomeWorkspace({
   setView: (view: AppView) => void;
 }) {
   const nextBooking = bookings.find((booking) => booking.status === "confirmed" || booking.status === "checked-in");
-  const orderedSessions = [...sessions].sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`));
-  const nextSession = nextBooking ? sessions.find((session) => session.id === nextBooking.sessionId) : orderedSessions[0];
+  const orderedSessions = sessions.filter(isFutureSession).sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`));
+  const nextSession = nextBooking ? orderedSessions.find((session) => session.id === nextBooking.sessionId) : orderedSessions[0];
   const nextAvailable = orderedSessions[0];
   const nextLocation = nextAvailable ? locations.find((location) => location.id === (nextAvailable.locationId ?? "scarborough")) : null;
   const nextAvailableType = nextAvailable ? getSessionType(nextAvailable.typeId) : null;
