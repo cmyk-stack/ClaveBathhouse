@@ -94,8 +94,6 @@ type BeforeInstallPromptEvent = Event & {
 };
 
 type PersistedAppState = {
-  isAuthenticated: boolean;
-  selectedCustomerId: string;
   view: AppView;
   version?: number;
 };
@@ -106,7 +104,6 @@ type AuthResponse = {
   customers?: Customer[];
   message?: string;
   sessions?: Session[];
-  state?: Partial<PersistedAppState> | null;
   transactions?: Transaction[];
   error?: string;
 };
@@ -154,7 +151,6 @@ type BootstrapResponse = {
   bookings?: Booking[];
   customers?: Customer[];
   sessions?: Session[];
-  state?: Partial<PersistedAppState> | null;
   transactions?: Transaction[];
 };
 
@@ -341,7 +337,7 @@ function readPersistedState(): Partial<PersistedAppState> {
     const stored = window.localStorage.getItem("clave-app-state");
     if (!stored) return {};
     const parsed = JSON.parse(stored) as Partial<PersistedAppState>;
-    return parsed.version === 2 ? parsed : {};
+    return parsed.version === 3 ? parsed : {};
   } catch {
     return {};
   }
@@ -454,13 +450,11 @@ export function App() {
 
   useEffect(() => {
     const nextState: PersistedAppState = {
-      isAuthenticated,
-      selectedCustomerId,
       view,
-      version: 2
+      version: 3
     };
     window.localStorage.setItem("clave-app-state", JSON.stringify(nextState));
-  }, [isAuthenticated, selectedCustomerId, view]);
+  }, [view]);
 
   useEffect(() => {
     const authParams = new URLSearchParams(window.location.search);
@@ -1196,11 +1190,11 @@ export function App() {
     setBusyAction("payment");
     setOperationalMessage("");
     try {
-      const result = await postJson<{ transaction?: Transaction; transactions?: Transaction[] }>("/api/state", {
+      const result = await postJson<BootstrapResponse & { transaction?: Transaction }>("/api/state", {
         action: "refund-transaction",
         transactionId
       });
-      if (result.transactions) setTransactions(result.transactions);
+      applyLiveData(result);
       pushNotice("email", "Refund processed", `${transaction.description ?? "Payment"} was refunded in demo mode.`);
     } catch (error) {
       setOperationalMessage(messageFromError(error, "Refund could not be saved in Neon."));

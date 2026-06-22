@@ -1,7 +1,6 @@
 import {
   ensureSchema,
   findCustomerById,
-  getStoredState,
   listTransactions,
   sendError,
   sendJson,
@@ -61,7 +60,6 @@ export default async function handler(request, response) {
 
       return sendJson(response, 200, {
         customer,
-        state: await getStoredState(customer.id),
         transactions: await listTransactions({ customerId: effectiveSession.customerId, role: effectiveSession.role })
       });
     }
@@ -84,10 +82,7 @@ export default async function handler(request, response) {
       to: customer.email
     });
 
-    return sendJson(response, 200, {
-      customer,
-      state: await getStoredState(customer.id)
-    });
+    return sendJson(response, 200, { customer });
   } catch (error) {
     return sendError(response, error);
   }

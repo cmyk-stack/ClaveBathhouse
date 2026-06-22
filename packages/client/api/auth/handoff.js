@@ -1,4 +1,4 @@
-import { findCustomerById, getStoredState, sendError, sendJson } from "../../server/db.js";
+import { findCustomerById, sendError, sendJson } from "../../server/db.js";
 import { setSessionCookie, verifySessionHandoffToken } from "../../server/security.js";
 
 export default async function handler(request, response) {
@@ -24,10 +24,7 @@ export default async function handler(request, response) {
       role: customer.role
     });
 
-    return sendJson(response, 200, {
-      customer,
-      state: await getStoredState(customer.id)
-    });
+    return sendJson(response, 200, { customer });
   } catch (error) {
     return sendError(response, error);
   }

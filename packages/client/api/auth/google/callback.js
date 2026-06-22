@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { ensureSchema, getStoredState, sendError, sendJson, upsertGoogleCustomer } from "../../../server/db.js";
+import { ensureSchema, sendError, sendJson, upsertGoogleCustomer } from "../../../server/db.js";
 import { createSessionHandoffToken, setSessionCookie } from "../../../server/security.js";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";

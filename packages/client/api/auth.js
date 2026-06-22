@@ -5,7 +5,6 @@ import {
   findCustomerByEmail,
   findCustomerById,
   findCustomerWithAuthByEmail,
-  getStoredState,
   listBookings,
   listSessions,
   listTransactions,
@@ -30,21 +29,20 @@ export default async function handler(request, response) {
       const session = getSession(request);
       if (!session) {
         const authResult = request.query?.debug === "1";
-        return sendJson(response, 200, authResult ? { customer: null, hasSession: false, state: null } : { customer: null, state: null });
+        return sendJson(response, 200, authResult ? { customer: null, hasSession: false } : { customer: null });
       }
 
       await ensureSchema();
       const customer = await findCustomerById(session.customerId);
       if (!customer) {
         clearSessionCookie(response);
-        return sendJson(response, 200, { customer: null, state: null });
+        return sendJson(response, 200, { customer: null });
       }
 
       return sendJson(response, 200, {
         customer,
         bookings: await listBookings({ customerId: customer.id, role: customer.role }),
         sessions: await listSessions(),
-        state: await getStoredState(customer.id),
         transactions: await listTransactions({ customerId: customer.id, role: customer.role })
       });
     }
@@ -74,7 +72,6 @@ export default async function handler(request, response) {
         customer: publicCustomer,
         bookings: await listBookings({ customerId: publicCustomer.id, role: publicCustomer.role }),
         sessions: await listSessions(),
-        state: await getStoredState(publicCustomer.id),
         transactions: await listTransactions({ customerId: publicCustomer.id, role: publicCustomer.role })
       });
     }
@@ -112,7 +109,6 @@ export default async function handler(request, response) {
         customer: savedCustomer,
         bookings: await listBookings({ customerId: savedCustomer.id, role: savedCustomer.role }),
         sessions: await listSessions(),
-        state: await getStoredState(savedCustomer.id),
         transactions: await listTransactions({ customerId: savedCustomer.id, role: savedCustomer.role })
       });
     }
@@ -172,7 +168,6 @@ export default async function handler(request, response) {
         customer,
         bookings: await listBookings({ customerId: customer.id, role: customer.role }),
         sessions: await listSessions(),
-        state: await getStoredState(customer.id),
         transactions: await listTransactions({ customerId: customer.id, role: customer.role })
       });
     }

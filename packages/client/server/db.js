@@ -162,14 +162,6 @@ async function ensureSchemaInternal() {
     )
   `;
 
-  await sql`
-    CREATE TABLE IF NOT EXISTS clave_app_state (
-      customer_id TEXT PRIMARY KEY REFERENCES clave_customers(id) ON DELETE CASCADE,
-      payload JSONB NOT NULL,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `;
-
   for (const location of seedLocations) {
     await sql`
       INSERT INTO clave_locations (id, name, address, hours)
@@ -189,17 +181,6 @@ async function ensureSchemaInternal() {
 }
 
 async function removeLegacyDemoData() {
-  await sql`
-    DELETE FROM clave_app_state
-    WHERE customer_id IN ('c1', 'c2', 'c3')
-      OR customer_id IN (
-        SELECT id
-        FROM clave_customers
-        WHERE lower(email) IN ('jon@example.com', 'mia@example.com', 'shane@example.com')
-          OR lower(email) LIKE 'codex-%@example.com'
-      )
-  `;
-
   await sql`
     DELETE FROM clave_bookings
     WHERE id IN ('b1', 'b2', 'b3')
@@ -681,55 +662,6 @@ export async function savePasswordResetToken(email, token, expiresAt) {
     WHERE lower(email) = lower(${email})
   `;
   return result.rowCount > 0;
-}
-
-export async function getStoredState(customerId) {
-  const result = await sql`
-    SELECT payload
-    FROM clave_app_state
-    WHERE customer_id = ${customerId}
-    LIMIT 1
-  `;
-
-  const payload = result.rows[0]?.payload ?? null;
-  if (!payload || typeof payload !== "object") return payload;
-  return sanitizeStoredState(payload);
-}
-
-export async function saveStoredState(customerId, payload) {
-  const safePayload = sanitizeStoredState(payload);
-  await sql`
-    INSERT INTO clave_app_state (customer_id, payload, updated_at)
-    VALUES (${customerId}, ${JSON.stringify(safePayload)}::jsonb, NOW())
-    ON CONFLICT (customer_id)
-    DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()
-  `;
-}
-
-function isLegacyDemoCustomer(customer) {
-  const id = String(customer?.id ?? "").toLowerCase();
-  const email = String(customer?.email ?? "").toLowerCase();
-  return id === "c2" || id === "c3" || email === "jon@example.com" || email === "mia@example.com";
-}
-
-function isLegacyDemoBooking(booking) {
-  const id = String(booking?.id ?? "").toLowerCase();
-  const customerId = String(booking?.customerId ?? booking?.customer_id ?? "").toLowerCase();
-  const sessionId = String(booking?.sessionId ?? booking?.session_id ?? "").toLowerCase();
-  return id === "b1" || id === "b2" || id === "b3" || sessionId === "s1" || sessionId === "s2" || sessionId === "s3" || customerId === "c2" || customerId === "c3";
-}
-
-function sanitizeStoredState(payload) {
-  if (!payload || typeof payload !== "object") return payload;
-  const { notices, ...safePayload } = payload;
-  return {
-    ...safePayload,
-    bookings: Array.isArray(safePayload.bookings) ? safePayload.bookings.filter((booking) => !isLegacyDemoBooking(booking)) : safePayload.bookings,
-    customers: Array.isArray(safePayload.customers) ? safePayload.customers.filter((customer) => !isLegacyDemoCustomer(customer)) : safePayload.customers,
-    transactions: Array.isArray(safePayload.transactions)
-      ? safePayload.transactions.filter((transaction) => !["b1", "b2", "b3"].includes(String(transaction?.bookingId ?? transaction?.booking_id ?? "").toLowerCase()))
-      : safePayload.transactions
-  };
 }
 
 function datePartsFromStartsAt(startsAt) {
