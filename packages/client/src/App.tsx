@@ -200,6 +200,17 @@ function localDateAfter(days: number) {
   return date.toISOString().slice(0, 10);
 }
 
+function venueDateToday() {
+  const parts = new Intl.DateTimeFormat("en-AU", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "Australia/Perth",
+    year: "numeric"
+  }).formatToParts(new Date());
+  const value = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  return `${value("year")}-${value("month")}-${value("day")}`;
+}
+
 function sessionStartsAt(session: Session) {
   if (session.startsAt) return new Date(session.startsAt);
   return new Date(`${session.date}T${session.time}:00+08:00`);
@@ -1362,7 +1373,7 @@ export function App() {
               />
                 )}
 
-                {view === "staff" && canUseStaffTools && <StaffWorkspace bookings={bookings} checkIn={checkIn} sessions={sessions} />}
+                {view === "staff" && canUseStaffTools && <StaffWorkspace bookings={bookings} busyAction={busyAction} checkIn={checkIn} sessions={sessions} />}
 
                 {view === "admin" && canUseAdminTools && (
               <AdminWorkspace
@@ -2236,40 +2247,124 @@ function ProfileWorkspace({
   );
 }
 
-function StaffWorkspace({ bookings, checkIn, sessions }: { bookings: Booking[]; checkIn: (bookingId: string) => void; sessions: Session[] }) {
-  const today = new Date().toISOString().slice(0, 10);
-  const todaysSessions = sessions
-    .filter((session) => session.date >= today)
-    .sort((a, b) => sessionStartsAt(a).getTime() - sessionStartsAt(b).getTime())
-    .slice(0, 8);
+function StaffWorkspace({
+  bookings,
+  busyAction,
+  checkIn,
+  sessions
+}: {
+  bookings: Booking[];
+  busyAction: BusyAction;
+  checkIn: (bookingId: string) => void;
+  sessions: Session[];
+}) {
+  const today = venueDateToday();
+  const futureSessions = sessions.filter(isFutureSession).sort((a, b) => sessionStartsAt(a).getTime() - sessionStartsAt(b).getTime());
+  const todaysSessions = futureSessions.filter((session) => session.date === today);
+  const sessionQueue = (todaysSessions.length > 0 ? todaysSessions : futureSessions).slice(0, 8);
+  const todaysSessionIds = new Set(todaysSessions.map((session) => session.id));
+  const todaysBookings = bookings.filter((booking) => todaysSessionIds.has(booking.sessionId) && booking.status !== "cancelled");
+  const checkedInCount = todaysBookings.filter((booking) => booking.status === "checked-in").length;
+  const expectedCount = todaysBookings.filter((booking) => booking.status === "confirmed").length;
+  const waitlistCount = todaysBookings.filter((booking) => booking.status === "waitlist").length;
 
   return (
     <div className="workspace-grid staff-grid">
-      {todaysSessions.map((session) => {
-        const attendees = bookings.filter((booking) => booking.sessionId === session.id && booking.status !== "cancelled");
+      <section className="surface staff-hero">
+        <div className="section-head">
+          <div>
+            <p className="eyebrow">Staff</p>
+            <h3>Today's floor</h3>
+          </div>
+          <span className="pill">{formatShortDate(today)}</span>
+        </div>
+        <div className="staff-metrics" aria-label="Today's staff summary">
+          <article>
+            <span>Sessions</span>
+            <strong>{todaysSessions.length}</strong>
+          </article>
+          <article>
+            <span>Expected</span>
+            <strong>{expectedCount}</strong>
+          </article>
+          <article>
+            <span>Checked in</span>
+            <strong>{checkedInCount}</strong>
+          </article>
+          <article>
+            <span>Waitlist</span>
+            <strong>{waitlistCount}</strong>
+          </article>
+        </div>
+      </section>
+
+      {todaysSessions.length === 0 && futureSessions.length > 0 && (
+        <section className="surface staff-empty">
+          <p className="eyebrow">Next sessions</p>
+          <h3>No more sessions today</h3>
+          <p>The next published sessions are shown below so the team can prepare the room and guest list.</p>
+        </section>
+      )}
+
+      {sessionQueue.length === 0 && (
+        <section className="surface staff-empty">
+          <p className="eyebrow">Schedule</p>
+          <h3>No published sessions</h3>
+          <p>Once an admin publishes sessions, staff check-ins and guest lists will appear here.</p>
+        </section>
+      )}
+
+      {sessionQueue.map((session) => {
+        const attendees = bookings
+          .filter((booking) => booking.sessionId === session.id && booking.status !== "cancelled")
+          .sort((a, b) => {
+            const statusOrder: Record<BookingStatus, number> = { confirmed: 0, "checked-in": 1, waitlist: 2, cancelled: 3 };
+            return statusOrder[a.status] - statusOrder[b.status] || a.customerName.localeCompare(b.customerName);
+          });
+        const confirmed = attendees.filter((booking) => booking.status === "confirmed");
+        const checkedIn = attendees.filter((booking) => booking.status === "checked-in");
+        const waitlist = attendees.filter((booking) => booking.status === "waitlist");
+        const type = getSessionType(session.typeId);
+        const location = locations.find((item) => item.id === (session.locationId ?? "scarborough"));
+
         return (
-          <section className="surface schedule-block" key={session.id}>
+          <section className="surface staff-session-card" key={session.id}>
             <div className="section-head">
               <div>
-                <p className="eyebrow">{session.time}</p>
-                <h3>{getSessionType(session.typeId).name}</h3>
+                <p className="eyebrow">{session.date === today ? session.time : `${formatShortDate(session.date)} - ${session.time}`}</p>
+                <h3>{type.name}</h3>
               </div>
-              <span className="pill">{attendees.filter((item) => item.status === "checked-in").length}/{session.capacity} checked in</span>
+              <span className="pill">{checkedIn.length}/{session.capacity}</span>
             </div>
+
+            <div className="staff-session-meta">
+              <span>{location?.name ?? "Clave Bathhouse"}</span>
+              <span>{session.practitioner}</span>
+              <span>{session.capacity - activeBookingsFor(session.id, bookings).length} spots open</span>
+            </div>
+
             <div className="attendance-list">
+              {attendees.length === 0 && <p className="empty-state">No guests booked yet.</p>}
               {attendees.map((booking) => (
-                <div className="attendance-row" key={booking.id}>
+                <div className="attendance-row staff-attendee-row" key={booking.id}>
                   <span>
                     <strong>{booking.customerName}</strong>
-                    <small>{booking.status}</small>
+                    <small>{booking.status === "confirmed" ? "Ready for arrival" : booking.status}</small>
                   </span>
-                  <button disabled={booking.status === "checked-in" || booking.status === "waitlist"} onClick={() => checkIn(booking.id)}>
-                    Check in
+                  <span className={`status ${booking.status}`}>{booking.status}</span>
+                  <button disabled={busyAction === "check-in" || booking.status !== "confirmed"} onClick={() => checkIn(booking.id)}>
+                    {booking.status === "checked-in" ? "Done" : booking.status === "waitlist" ? "Waitlist" : busyAction === "check-in" ? "Saving" : "Check in"}
                   </button>
                 </div>
               ))}
-              {attendees.length === 0 && <p className="empty-state">No attendees yet.</p>}
             </div>
+
+            {(confirmed.length > 0 || waitlist.length > 0) && (
+              <div className="staff-session-foot">
+                <span>{confirmed.length} due</span>
+                <span>{waitlist.length} waitlisted</span>
+              </div>
+            )}
           </section>
         );
       })}

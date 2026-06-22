@@ -1288,6 +1288,77 @@ small,
   color: #31576b;
 }
 
+.staff-hero,
+.staff-session-card,
+.staff-empty {
+  display: grid;
+  gap: 12px;
+}
+
+.staff-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.staff-metrics article {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid rgba(38, 32, 25, 0.1);
+  border-radius: 16px;
+  background: rgba(246, 238, 224, 0.72);
+}
+
+.staff-metrics span,
+.staff-session-meta,
+.staff-session-foot {
+  color: #736858;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.staff-metrics strong {
+  color: #2b2118;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.55rem;
+  font-weight: 400;
+}
+
+.staff-session-meta,
+.staff-session-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.staff-session-meta span,
+.staff-session-foot span {
+  min-height: 24px;
+  border-radius: 999px;
+  background: #eee9df;
+  padding: 0.28rem 0.58rem;
+}
+
+.staff-empty p {
+  color: #736858;
+  margin-bottom: 0;
+}
+
+.staff-attendee-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.staff-attendee-row button {
+  min-width: 86px;
+  min-height: 36px;
+  padding: 0.45rem 0.65rem;
+  white-space: nowrap;
+}
+
 .schedule-block {
   min-height: 220px;
 }
@@ -1493,6 +1564,18 @@ small,
 
   .session-admin-fields {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .staff-attendee-row {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .staff-attendee-row .status,
+  .staff-attendee-row button {
+    justify-self: start;
   }
 }
 
