@@ -53,7 +53,11 @@ export default async function handler(request, response) {
       state
     });
 
-    response.writeHead(302, { Location: `${GOOGLE_AUTH_URL}?${params.toString()}` });
+    response.writeHead(302, {
+      "Cache-Control": "no-store, max-age=0",
+      Location: `${GOOGLE_AUTH_URL}?${params.toString()}`,
+      Pragma: "no-cache"
+    });
     response.end();
   } catch (error) {
     return sendError(response, error);

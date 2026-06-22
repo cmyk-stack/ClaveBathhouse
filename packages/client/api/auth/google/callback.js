@@ -49,7 +49,11 @@ export default async function handler(request, response) {
   try {
     const { code, error, state } = request.query ?? {};
     if (error) {
-      response.writeHead(302, { Location: `${getAppUrl(request)}/?auth=google_cancelled` });
+      response.writeHead(302, {
+        "Cache-Control": "no-store, max-age=0",
+        Location: `${getAppUrl(request)}/?auth=google_cancelled`,
+        Pragma: "no-cache"
+      });
       response.end();
       return;
     }
@@ -120,7 +124,11 @@ export default async function handler(request, response) {
       email: customer.email,
       role: customer.role
     });
-    response.writeHead(302, { Location: `${getAppUrl(request)}/?auth=google_success&handoff=${encodeURIComponent(handoffToken)}` });
+    response.writeHead(302, {
+      "Cache-Control": "no-store, max-age=0",
+      Location: `${getAppUrl(request)}/?auth=google_success&handoff=${encodeURIComponent(handoffToken)}`,
+      Pragma: "no-cache"
+    });
     response.end();
   } catch (error) {
     return sendError(response, error);

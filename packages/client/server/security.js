@@ -68,6 +68,8 @@ export function setSessionCookie(response, session) {
   });
   const token = `${payload}.${sign(payload)}`;
   const secure = process.env.VERCEL ? "; Secure" : "";
+  response.setHeader("Cache-Control", "no-store, max-age=0");
+  response.setHeader("Pragma", "no-cache");
   response.setHeader("Set-Cookie", `${COOKIE_NAME}=${token}; Path=/; HttpOnly; SameSite=Lax${secure}; Max-Age=${SESSION_TTL_SECONDS}`);
 }
 
@@ -99,6 +101,8 @@ export function verifySessionHandoffToken(token) {
 
 export function clearSessionCookie(response) {
   const secure = process.env.VERCEL ? "; Secure" : "";
+  response.setHeader("Cache-Control", "no-store, max-age=0");
+  response.setHeader("Pragma", "no-cache");
   response.setHeader("Set-Cookie", `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax${secure}; Max-Age=0`);
 }
 

@@ -356,6 +356,7 @@ function readPersistedState(): Partial<PersistedAppState> {
 async function postJson<T>(url: string, payload: unknown): Promise<T> {
   const response = await fetch(url, {
     body: JSON.stringify(payload),
+    cache: "no-store",
     headers: { "Content-Type": "application/json" },
     method: "POST"
   });
@@ -369,7 +370,7 @@ async function postJson<T>(url: string, payload: unknown): Promise<T> {
 }
 
 async function getJson<T>(url: string): Promise<T> {
-  const response = await fetch(url);
+  const response = await fetch(url, { cache: "no-store" });
   const data = await readJsonResponse<T>(response);
   if (!response.ok) {
     const body = data as ApiErrorBody;
@@ -753,7 +754,7 @@ export function App() {
   }
 
   async function handleSignOut() {
-    await fetch("/api/auth", { method: "DELETE" }).catch(() => undefined);
+    await fetch("/api/auth", { cache: "no-store", method: "DELETE" }).catch(() => undefined);
     window.localStorage.removeItem("clave-app-state");
     setIsAuthenticated(false);
     setAuthMode("login");

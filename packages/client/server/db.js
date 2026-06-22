@@ -1103,6 +1103,8 @@ export async function checkInBookingRecord({ bookingId }) {
 }
 
 export function sendJson(response, statusCode, body) {
+  response.setHeader("Cache-Control", "no-store, max-age=0");
+  response.setHeader("Pragma", "no-cache");
   response.status(statusCode).json(body);
 }
 
