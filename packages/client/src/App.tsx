@@ -297,6 +297,16 @@ function addDays(date: string, days: number) {
   return parsed.toISOString().slice(0, 10);
 }
 
+function monthStart(date: string) {
+  return `${date.slice(0, 7)}-01`;
+}
+
+function addMonths(date: string, months: number) {
+  const [year, month] = date.split("-").map(Number);
+  const parsed = new Date(year, month - 1 + months, 1);
+  return dateStringFromParts(parsed.getFullYear(), parsed.getMonth() + 1, 1);
+}
+
 function calendarDaysForMonth(date: string) {
   const [year, month] = date.split("-").map(Number);
   const firstDay = new Date(year, month - 1, 1);
@@ -1706,6 +1716,7 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
     setSelectedType
   } = props;
 
+  const [calendarMonth, setCalendarMonth] = useState(() => monthStart(selectedDate));
   const selectedLocation = locations.find((location) => location.id === selectedLocationId);
   const sessionsForFilters = allSessions.filter((session) => {
     const matchesLocation = !selectedLocationId || (session.locationId ?? "scarborough") === selectedLocationId;
@@ -1717,8 +1728,9 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
   const displayedSessions = sessionsForFilters.filter((session) => session.date === selectedDate);
   const availableDateKey = availableDates.join("|");
   const availableDateSet = new Set(availableDates);
-  const calendarDays = calendarDaysForMonth(selectedDate);
+  const calendarDays = calendarDaysForMonth(calendarMonth);
   const dateCounts = new Map(availableDates.map((date) => [date, sessionsForFilters.filter((session) => session.date === date).length]));
+  const visibleMonthAvailableDates = availableDates.filter((date) => monthStart(date) === calendarMonth);
   const selectedSessionDetails = selectedSessions
     .map((sessionId) => allSessions.find((session) => session.id === sessionId))
     .filter((session): session is Session => Boolean(session));
@@ -1733,10 +1745,20 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
   );
   const waitlistSelected = selectedSessionDetails.filter((session) => activeBookingsFor(session.id, allBookings).length >= session.capacity).length;
 
+  function chooseBookingDate(date: string) {
+    setCalendarMonth(monthStart(date));
+    setSelectedDate(date);
+  }
+
   useEffect(() => {
     if (!selectedLocation || availableDates.length === 0 || availableDates.includes(selectedDate)) return;
+    setCalendarMonth(monthStart(nextAvailableDate));
     setSelectedDate(nextAvailableDate);
   }, [availableDateKey, nextAvailableDate, selectedDate, selectedLocation, setSelectedDate]);
+
+  useEffect(() => {
+    setCalendarMonth(monthStart(selectedDate));
+  }, [selectedLocationId]);
 
   if (!selectedLocation) {
     return <LocationsWorkspace locations={locations} onSelectLocation={setSelectedLocationId} />;
@@ -1758,7 +1780,6 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
         </div>
 
         <div className="filter-row">
-          <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
           <select value={selectedType} onChange={(event) => setSelectedType(event.target.value)}>
             <option value="all">All types</option>
             {sessionTypes.map((type) => (
@@ -1769,10 +1790,18 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
           </select>
         </div>
 
-        <div className="availability-calendar" aria-label={`${formatMonthLabel(selectedDate)} availability`}>
+        <div className="availability-calendar" aria-label={`${formatMonthLabel(calendarMonth)} availability`}>
           <div className="availability-calendar-head">
-            <strong>{formatMonthLabel(selectedDate)}</strong>
-            <span>{availableDates.length} available day{availableDates.length === 1 ? "" : "s"}</span>
+            <button aria-label="Previous month" className="calendar-nav-button" onClick={() => setCalendarMonth(addMonths(calendarMonth, -1))} type="button">
+              ‹
+            </button>
+            <div>
+              <strong>{formatMonthLabel(calendarMonth)}</strong>
+              <span>{visibleMonthAvailableDates.length} available day{visibleMonthAvailableDates.length === 1 ? "" : "s"}</span>
+            </div>
+            <button aria-label="Next month" className="calendar-nav-button" onClick={() => setCalendarMonth(addMonths(calendarMonth, 1))} type="button">
+              ›
+            </button>
           </div>
           <div className="calendar-weekdays" aria-hidden="true">
             {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
@@ -1790,7 +1819,7 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
                   className={`${hasSessions ? "has-sessions" : ""} ${isSelected ? "selected" : ""}`.trim()}
                   disabled={!hasSessions}
                   key={date}
-                  onClick={() => setSelectedDate(date)}
+                  onClick={() => chooseBookingDate(date)}
                   type="button"
                 >
                   <strong>{dayNumber}</strong>
@@ -1806,7 +1835,7 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
         {availableDates.length > 0 && (
           <div className="date-shortcuts" aria-label="Available dates">
             {availableDates.slice(0, 6).map((date) => (
-              <button className={date === selectedDate ? "active" : ""} key={date} onClick={() => setSelectedDate(date)} type="button">
+              <button className={date === selectedDate ? "active" : ""} key={date} onClick={() => chooseBookingDate(date)} type="button">
                 <span>{formatShortDate(date)}</span>
                 <strong>{dateCounts.get(date)} session{dateCounts.get(date) === 1 ? "" : "s"}</strong>
               </button>
@@ -1824,7 +1853,7 @@ function CustomerWorkspace(props: CustomerWorkspaceProps) {
             <div className="empty-action">
               <p className="muted">{availableDates.length === 0 ? "No sessions are published for this bathhouse yet." : "No sessions match this date and filter."}</p>
               {nextAvailableDate && nextAvailableDate !== selectedDate && (
-                <button className="quiet" onClick={() => setSelectedDate(nextAvailableDate)} type="button">
+                <button className="quiet" onClick={() => chooseBookingDate(nextAvailableDate)} type="button">
                   Show {formatShortDate(nextAvailableDate)}
                 </button>
               )}

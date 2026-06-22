@@ -752,13 +752,15 @@ button.quiet {
 }
 
 .availability-calendar-head {
-  display: flex;
+  display: grid;
+  grid-template-columns: 34px 1fr 34px;
   gap: 8px;
   align-items: center;
-  justify-content: space-between;
+  text-align: center;
 }
 
 .availability-calendar-head strong {
+  display: block;
   color: #2b2118;
   font-size: 0.9rem;
 }
@@ -767,6 +769,19 @@ button.quiet {
   color: #736858;
   font-size: 0.68rem;
   font-weight: 800;
+}
+
+.calendar-nav-button {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
+  border-radius: 999px;
+  padding: 0;
+  background: #eee9df;
+  color: #2b2118;
+  font-size: 1.35rem;
+  line-height: 1;
 }
 
 .calendar-weekdays,
