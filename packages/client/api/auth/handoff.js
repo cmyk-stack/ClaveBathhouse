@@ -1,4 +1,4 @@
-import { findCustomerById, sendError, sendJson } from "../../server/db.js";
+import { ensureSchema, findCustomerById, listBookings, listCustomers, listSessions, listTransactions, sendError, sendJson } from "../../server/db.js";
 import { setSessionCookie, verifySessionHandoffToken } from "../../server/security.js";
 
 export default async function handler(request, response) {
@@ -13,6 +13,7 @@ export default async function handler(request, response) {
       return sendJson(response, 400, { error: "invalid_handoff", message: "Google sign in handoff expired. Try signing in again." });
     }
 
+    await ensureSchema();
     const customer = await findCustomerById(session.customerId);
     if (!customer) {
       return sendJson(response, 404, { error: "not_found", message: "Google account was not found." });
@@ -24,7 +25,13 @@ export default async function handler(request, response) {
       role: customer.role
     });
 
-    return sendJson(response, 200, { customer });
+    return sendJson(response, 200, {
+      customer,
+      bookings: await listBookings({ customerId: customer.id, role: customer.role }),
+      customers: customer.role === "admin" ? await listCustomers() : undefined,
+      sessions: await listSessions(),
+      transactions: await listTransactions({ customerId: customer.id, role: customer.role })
+    });
   } catch (error) {
     return sendError(response, error);
   }

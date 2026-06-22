@@ -67,6 +67,7 @@ export default async function handler(request, response) {
         return sendJson(response, 200, {
           booking,
           bookings: await listBookings({ customerId: staffSession.customerId, role: staffSession.role }),
+          customers: staffSession.role === "admin" ? await listCustomers() : undefined,
           transactions: await listTransactions({ customerId: staffSession.customerId, role: staffSession.role })
         });
       }
@@ -93,6 +94,7 @@ export default async function handler(request, response) {
         booking,
         bookings: await listBookings({ customerId: effectiveSession.customerId, role: effectiveSession.role }),
         customer: await findCustomerById(customer.id),
+        customers: effectiveSession.role === "admin" ? await listCustomers() : undefined,
         transactions: await listTransactions({ customerId: effectiveSession.customerId, role: effectiveSession.role })
       });
     }

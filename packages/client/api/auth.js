@@ -6,6 +6,7 @@ import {
   findCustomerById,
   findCustomerWithAuthByEmail,
   listBookings,
+  listCustomers,
   listSessions,
   listTransactions,
   savePasswordResetToken,
@@ -42,6 +43,7 @@ export default async function handler(request, response) {
       return sendJson(response, 200, {
         customer,
         bookings: await listBookings({ customerId: customer.id, role: customer.role }),
+        customers: customer.role === "admin" ? await listCustomers() : undefined,
         sessions: await listSessions(),
         transactions: await listTransactions({ customerId: customer.id, role: customer.role })
       });
@@ -71,6 +73,7 @@ export default async function handler(request, response) {
       return sendJson(response, 200, {
         customer: publicCustomer,
         bookings: await listBookings({ customerId: publicCustomer.id, role: publicCustomer.role }),
+        customers: publicCustomer.role === "admin" ? await listCustomers() : undefined,
         sessions: await listSessions(),
         transactions: await listTransactions({ customerId: publicCustomer.id, role: publicCustomer.role })
       });
@@ -108,6 +111,7 @@ export default async function handler(request, response) {
       return sendJson(response, 200, {
         customer: savedCustomer,
         bookings: await listBookings({ customerId: savedCustomer.id, role: savedCustomer.role }),
+        customers: savedCustomer.role === "admin" ? await listCustomers() : undefined,
         sessions: await listSessions(),
         transactions: await listTransactions({ customerId: savedCustomer.id, role: savedCustomer.role })
       });
@@ -167,6 +171,7 @@ export default async function handler(request, response) {
       return sendJson(response, 200, {
         customer,
         bookings: await listBookings({ customerId: customer.id, role: customer.role }),
+        customers: customer.role === "admin" ? await listCustomers() : undefined,
         sessions: await listSessions(),
         transactions: await listTransactions({ customerId: customer.id, role: customer.role })
       });
