@@ -23,6 +23,7 @@ type Session = {
   typeId: string;
   date: string;
   time: string;
+  startsAt?: string;
   capacity: number;
   practitioner: string;
   locationId?: string;
@@ -204,6 +205,7 @@ function localDateAfter(days: number) {
 }
 
 function sessionStartsAt(session: Session) {
+  if (session.startsAt) return new Date(session.startsAt);
   return new Date(`${session.date}T${session.time}:00+08:00`);
 }
 
@@ -558,6 +560,10 @@ export function App() {
     setSelectedCustomerId(customer.id);
     setProfileName(customer.name);
     setProfilePhone(customer.phone);
+    setSelectedLocationId(null);
+    setSelectedSessions([]);
+    setSelectedType("all");
+    setBookingFeedback(null);
     setView(defaultViewForRole(customer.role));
     setCustomers((current) => {
       const withoutCustomer = current.filter((item) => item.id !== customer.id);
@@ -752,6 +758,10 @@ export function App() {
     setTransactions([]);
     setSessions([]);
     setBookings([]);
+    setSelectedLocationId(null);
+    setSelectedSessions([]);
+    setSelectedType("all");
+    setBookingFeedback(null);
     setEmptySessionRetry(false);
     setView("home");
   }
@@ -1627,7 +1637,7 @@ function HomeWorkspace({
   setView: (view: AppView) => void;
 }) {
   const nextBooking = bookings.find((booking) => booking.status === "confirmed" || booking.status === "checked-in");
-  const orderedSessions = sessions.filter(isFutureSession).sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`));
+  const orderedSessions = sessions.filter(isFutureSession).sort((a, b) => sessionStartsAt(a).getTime() - sessionStartsAt(b).getTime());
   const nextSession = nextBooking ? orderedSessions.find((session) => session.id === nextBooking.sessionId) : orderedSessions[0];
   const nextAvailable = orderedSessions[0];
   const nextLocation = nextAvailable ? locations.find((location) => location.id === (nextAvailable.locationId ?? "scarborough")) : null;
@@ -1915,7 +1925,7 @@ function CalendarWorkspace({ bookings, sessions }: { bookings: Booking[]; sessio
   const datedBookings = bookings
     .map((booking) => ({ booking, session: sessionById.get(booking.sessionId) }))
     .filter((item): item is { booking: Booking; session: Session } => Boolean(item.session))
-    .sort((a, b) => `${a.session.date}${a.session.time}`.localeCompare(`${b.session.date}${b.session.time}`));
+    .sort((a, b) => sessionStartsAt(a.session).getTime() - sessionStartsAt(b.session).getTime());
   const monthSource = datedBookings[0]?.session.date ?? new Date().toISOString().slice(0, 10);
   const monthDate = new Date(`${monthSource}T00:00:00`);
   const monthLabel = monthDate.toLocaleDateString("en-AU", { month: "long", year: "numeric" });
@@ -2206,7 +2216,7 @@ function StaffWorkspace({ bookings, checkIn, sessions }: { bookings: Booking[]; 
   const today = new Date().toISOString().slice(0, 10);
   const todaysSessions = sessions
     .filter((session) => session.date >= today)
-    .sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`))
+    .sort((a, b) => sessionStartsAt(a).getTime() - sessionStartsAt(b).getTime())
     .slice(0, 8);
 
   return (
@@ -2330,7 +2340,7 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
       const matchesLocation = scheduleLocationFilter === "all" || (session.locationId ?? "scarborough") === scheduleLocationFilter;
       return matchesLocation && session.date >= scheduleDays[0] && session.date <= scheduleDays[6];
     })
-    .sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`));
+    .sort((a, b) => sessionStartsAt(a).getTime() - sessionStartsAt(b).getTime());
   const filteredBookings = bookings.filter((booking) => {
     const session = sessionById.get(booking.sessionId);
     const haystack = `${booking.customerName} ${booking.status} ${session ? `${getSessionType(session.typeId).name} ${session.date} ${session.time}` : booking.sessionId}`.toLowerCase();

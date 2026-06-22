@@ -757,6 +757,7 @@ export function sessionFromRow(row) {
     typeId: row.type_id,
     date: parts.date,
     time: parts.time,
+    startsAt: row.starts_at instanceof Date ? row.starts_at.toISOString() : row.starts_at,
     capacity: row.capacity,
     practitioner: row.practitioner,
     locationId: row.location_id
