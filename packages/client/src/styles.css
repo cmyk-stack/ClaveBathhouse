@@ -1498,9 +1498,22 @@ small,
 }
 
 .customer-list article {
-  grid-template-columns: minmax(0, 1fr) 118px;
-  align-items: center;
+  grid-template-columns: 1fr;
+  align-items: start;
   gap: 10px;
+}
+
+.customer-summary,
+.customer-controls {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.customer-summary strong,
+.customer-summary span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .customer-list span,
@@ -1523,11 +1536,20 @@ small,
 }
 
 .customer-role-control select {
+  width: 100%;
+  min-width: 0;
   min-height: 36px;
   border-radius: 999px;
   padding: 0.45rem 0.55rem;
   font-size: 0.8rem;
   font-weight: 750;
+}
+
+@media (min-width: 560px) {
+  .customer-list article {
+    grid-template-columns: minmax(0, 1fr) minmax(150px, 0.38fr);
+    align-items: center;
+  }
 }
 
 .notification-rail {

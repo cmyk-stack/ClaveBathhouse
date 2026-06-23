@@ -16,6 +16,7 @@ export async function requireFreshRole(request, response, allowedRoles) {
 
   return {
     ...session,
+    locationId: customer.locationId,
     role: customer.role
   };
 }

@@ -22,7 +22,7 @@ export default async function handler(request, response) {
     await ensureSchema();
     const currentCustomer = await findCustomerById(session.customerId);
     if (!currentCustomer) return sendJson(response, 401, { error: "unauthorized", message: "Sign in to continue." });
-    const effectiveSession = { ...session, role: currentCustomer.role };
+    const effectiveSession = { ...session, locationId: currentCustomer.locationId, role: currentCustomer.role };
 
     if (request.method === "GET") {
       return sendJson(response, 200, {
@@ -56,7 +56,7 @@ export default async function handler(request, response) {
         const staffSession = await requireFreshRole(request, response, ["staff", "admin"]);
         if (!staffSession) return;
 
-        const booking = await checkInBookingRecord({ bookingId });
+        const booking = await checkInBookingRecord({ bookingId, session: staffSession });
         if (!booking) return sendJson(response, 404, { error: "not_found", message: "Confirmed booking was not found." });
         const customer = await findCustomerById(booking.customerId);
         await sendTransactionalEmail({

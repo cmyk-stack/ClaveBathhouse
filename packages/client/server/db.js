@@ -74,6 +74,7 @@ async function ensureSchemaInternal() {
       password_reset_token TEXT,
       password_reset_expires_at TIMESTAMPTZ,
       google_sub TEXT UNIQUE,
+      location_id TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
@@ -94,6 +95,8 @@ async function ensureSchemaInternal() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
+
+  await sql`ALTER TABLE clave_customers ADD COLUMN IF NOT EXISTS location_id TEXT REFERENCES clave_locations(id)`;
 
   await sql`
     CREATE TABLE IF NOT EXISTS clave_sessions (
@@ -328,13 +331,14 @@ export function customerFromRow(row) {
     credits: row.credits,
     paymentMethod: row.payment_method,
     role: row.role ?? "customer",
+    locationId: row.location_id ?? null,
     stripeCustomerId: row.stripe_customer_id ?? null
   };
 }
 
 export async function findCustomerByEmail(email) {
   const result = await sql`
-    SELECT id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id
+    SELECT id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id, location_id
     FROM clave_customers
     WHERE lower(email) = lower(${email})
     LIMIT 1
@@ -345,7 +349,7 @@ export async function findCustomerByEmail(email) {
 
 export async function findCustomerByGoogleSub(googleSub) {
   const result = await sql`
-    SELECT id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id
+    SELECT id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id, location_id
     FROM clave_customers
     WHERE google_sub = ${googleSub}
     LIMIT 1
@@ -356,7 +360,7 @@ export async function findCustomerByGoogleSub(googleSub) {
 
 export async function findCustomerWithAuthByEmail(email) {
   const result = await sql`
-    SELECT id, name, email, phone, membership_id, credits, payment_method, password_hash, role, stripe_customer_id
+    SELECT id, name, email, phone, membership_id, credits, payment_method, password_hash, role, stripe_customer_id, location_id
     FROM clave_customers
     WHERE lower(email) = lower(${email})
     LIMIT 1
@@ -367,7 +371,7 @@ export async function findCustomerWithAuthByEmail(email) {
 
 export async function findCustomerById(customerId) {
   const result = await sql`
-    SELECT id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id
+    SELECT id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id, location_id
     FROM clave_customers
     WHERE id = ${customerId}
     LIMIT 1
@@ -378,7 +382,7 @@ export async function findCustomerById(customerId) {
 
 export async function listCustomers() {
   const result = await sql`
-    SELECT id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id
+    SELECT id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id, location_id
     FROM clave_customers
     WHERE id NOT IN ('c2', 'c3')
       AND lower(email) NOT IN ('jon@example.com', 'mia@example.com')
@@ -390,7 +394,7 @@ export async function listCustomers() {
 
 export async function verifyPasswordResetToken({ email, token }) {
   const result = await sql`
-    SELECT id, name, email, phone, membership_id, credits, payment_method, password_hash, role, stripe_customer_id
+    SELECT id, name, email, phone, membership_id, credits, payment_method, password_hash, role, stripe_customer_id, location_id
     FROM clave_customers
     WHERE lower(email) = lower(${email})
       AND password_reset_token = ${token}
@@ -409,7 +413,7 @@ export async function updateCustomerPassword({ customerId, passwordHash }) {
       password_reset_token = NULL,
       password_reset_expires_at = NULL
     WHERE id = ${customerId}
-    RETURNING id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id
+    RETURNING id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id, location_id
   `;
 
   return result.rows[0] ? customerFromRow(result.rows[0]) : null;
@@ -420,7 +424,7 @@ export async function addCustomerCredits({ credits, customerId }) {
     UPDATE clave_customers
     SET credits = credits + ${credits}
     WHERE id = ${customerId}
-    RETURNING id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id
+    RETURNING id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id, location_id
   `;
 
   return result.rows[0] ? customerFromRow(result.rows[0]) : null;
@@ -436,7 +440,7 @@ export async function updateCustomerMembership({ amountCents, credits, customerI
         credits = GREATEST(credits, ${credits}),
         payment_method = CASE WHEN ${amountCents} > 0 THEN 'Demo approved' ELSE payment_method END
       WHERE id = ${customerId}
-      RETURNING id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id
+      RETURNING id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id, location_id
     ),
     transaction_insert AS (
       INSERT INTO clave_transactions (id, booking_id, customer_id, amount_cents, status, provider, provider_id)
@@ -503,7 +507,7 @@ export async function redeemVoucherRecord({ code, customerId }) {
       SET credits = credits + GREATEST(1, floor((SELECT amount_cents FROM redeemed) / 5800.0)::int)
       WHERE id = ${customerId}
         AND EXISTS (SELECT 1 FROM redeemed)
-      RETURNING id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id
+      RETURNING id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id, location_id
     )
     SELECT
       redeemed.id,
@@ -520,7 +524,8 @@ export async function redeemVoucherRecord({ code, customerId }) {
       credited.credits,
       credited.payment_method,
       credited.role,
-      credited.stripe_customer_id
+      credited.stripe_customer_id,
+      credited.location_id
     FROM redeemed
     JOIN credited ON true
   `;
@@ -537,6 +542,7 @@ export async function redeemVoucherRecord({ code, customerId }) {
       credits: row.credits,
       payment_method: row.payment_method,
       role: row.role,
+      location_id: row.location_id,
       stripe_customer_id: row.stripe_customer_id
     }),
     creditsAdded: Math.max(1, Math.floor(Number(row.amount_cents ?? 0) / 5800)),
@@ -567,12 +573,14 @@ export async function recordAdminAudit({ action, actorCustomerId, details = {}, 
   `;
 }
 
-export async function updateCustomerRole({ customerId, role }) {
+export async function updateCustomerRole({ customerId, locationId = null, role }) {
   const result = await sql`
     UPDATE clave_customers
-    SET role = ${role}
+    SET
+      role = ${role},
+      location_id = CASE WHEN ${role} = 'staff' THEN ${locationId} ELSE NULL END
     WHERE id = ${customerId}
-    RETURNING id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id
+    RETURNING id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id, location_id
   `;
 
   return result.rows[0] ? customerFromRow(result.rows[0]) : null;
@@ -585,7 +593,7 @@ export async function updateCustomerProfile({ customerId, name, phone }) {
       name = ${name},
       phone = ${phone}
     WHERE id = ${customerId}
-    RETURNING id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id
+    RETURNING id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id, location_id
   `;
 
   return result.rows[0] ? customerFromRow(result.rows[0]) : null;
@@ -628,7 +636,7 @@ export async function upsertGoogleCustomer(profile) {
       SET
         name = COALESCE(NULLIF(${name}, ''), name)
       WHERE id = ${existingBySub.id}
-      RETURNING id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id
+      RETURNING id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id, location_id
     `;
     return result.rows[0] ? customerFromRow(result.rows[0]) : null;
   }
@@ -641,7 +649,7 @@ export async function upsertGoogleCustomer(profile) {
         google_sub = ${profile.sub},
         name = COALESCE(NULLIF(${name}, ''), name)
       WHERE id = ${existingByEmail.id}
-      RETURNING id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id
+      RETURNING id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id, location_id
     `;
     return result.rows[0] ? customerFromRow(result.rows[0]) : null;
   }
@@ -649,7 +657,7 @@ export async function upsertGoogleCustomer(profile) {
   const result = await sql`
     INSERT INTO clave_customers (id, name, email, phone, membership_id, credits, payment_method, role, google_sub)
     VALUES (${`g-${crypto.randomUUID()}`}, ${name}, ${profile.email}, '', 'drop-in', 0, '', 'customer', ${profile.sub})
-    RETURNING id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id
+    RETURNING id, name, email, phone, membership_id, credits, payment_method, role, stripe_customer_id, location_id
   `;
 
   return result.rows[0] ? customerFromRow(result.rows[0]) : null;
@@ -733,7 +741,7 @@ export function transactionFromRow(row) {
 
 export async function listTransactions({ customerId, role }) {
   const result =
-    role === "staff" || role === "admin"
+    role === "admin"
       ? await sql`
           SELECT t.id, t.booking_id, t.customer_id, c.name AS customer_name, t.amount_cents, t.status, t.provider, t.provider_id, t.created_at
           FROM clave_transactions t
@@ -742,6 +750,20 @@ export async function listTransactions({ customerId, role }) {
             AND (c.email IS NULL OR lower(c.email) NOT IN ('jon@example.com', 'mia@example.com'))
           ORDER BY t.created_at DESC
         `
+      : role === "staff"
+        ? await sql`
+            SELECT t.id, t.booking_id, t.customer_id, c.name AS customer_name, t.amount_cents, t.status, t.provider, t.provider_id, t.created_at
+            FROM clave_transactions t
+            JOIN clave_bookings b ON b.id = t.booking_id
+            JOIN clave_sessions s ON s.id = b.session_id
+            JOIN clave_customers staff ON staff.id = ${customerId}
+            LEFT JOIN clave_customers c ON c.id = t.customer_id
+            WHERE staff.location_id IS NOT NULL
+              AND s.location_id = staff.location_id
+              AND (t.customer_id IS NULL OR t.customer_id NOT IN ('c2', 'c3'))
+              AND (c.email IS NULL OR lower(c.email) NOT IN ('jon@example.com', 'mia@example.com'))
+            ORDER BY t.created_at DESC
+          `
       : await sql`
           SELECT t.id, t.booking_id, t.customer_id, c.name AS customer_name, t.amount_cents, t.status, t.provider, t.provider_id, t.created_at
           FROM clave_transactions t
@@ -850,7 +872,7 @@ export async function findSessionById(sessionId) {
 
 export async function listBookings({ customerId, role }) {
   const result =
-    role === "staff" || role === "admin"
+    role === "admin"
       ? await sql`
           SELECT b.id, b.session_id, b.customer_id, c.name AS customer_name, b.status, b.paid_cents, b.payment_id, b.created_at
           FROM clave_bookings b
@@ -861,6 +883,21 @@ export async function listBookings({ customerId, role }) {
             AND lower(c.email) NOT IN ('jon@example.com', 'mia@example.com')
           ORDER BY b.created_at DESC
         `
+      : role === "staff"
+        ? await sql`
+            SELECT b.id, b.session_id, b.customer_id, c.name AS customer_name, b.status, b.paid_cents, b.payment_id, b.created_at
+            FROM clave_bookings b
+            JOIN clave_customers c ON c.id = b.customer_id
+            JOIN clave_sessions s ON s.id = b.session_id
+            JOIN clave_customers staff ON staff.id = ${customerId}
+            WHERE b.id NOT IN ('b1', 'b2', 'b3')
+              AND b.session_id NOT IN ('s1', 's2', 's3')
+              AND b.customer_id NOT IN ('c2', 'c3')
+              AND lower(c.email) NOT IN ('jon@example.com', 'mia@example.com')
+              AND staff.location_id IS NOT NULL
+              AND s.location_id = staff.location_id
+            ORDER BY b.created_at DESC
+          `
       : await sql`
           SELECT b.id, b.session_id, b.customer_id, c.name AS customer_name, b.status, b.paid_cents, b.payment_id, b.created_at
           FROM clave_bookings b
@@ -996,7 +1033,7 @@ export async function createBookingRecord({ customer, sessionId, amountCents }) 
 
 export async function cancelBookingRecord({ bookingId, session, role }) {
   const targetResult =
-    role === "admin" || role === "staff"
+    role === "admin"
       ? await sql`
           SELECT b.id, b.session_id, b.customer_id, c.name AS customer_name, b.status, b.paid_cents, b.payment_id, b.created_at, s.starts_at
           FROM clave_bookings b
@@ -1005,6 +1042,17 @@ export async function cancelBookingRecord({ bookingId, session, role }) {
           WHERE b.id = ${bookingId}
           LIMIT 1
         `
+      : role === "staff"
+        ? await sql`
+            SELECT b.id, b.session_id, b.customer_id, c.name AS customer_name, b.status, b.paid_cents, b.payment_id, b.created_at, s.starts_at
+            FROM clave_bookings b
+            JOIN clave_customers c ON c.id = b.customer_id
+            JOIN clave_sessions s ON s.id = b.session_id
+            WHERE b.id = ${bookingId}
+              AND ${session.locationId ?? null} IS NOT NULL
+              AND s.location_id = ${session.locationId ?? null}
+            LIMIT 1
+          `
       : await sql`
           SELECT b.id, b.session_id, b.customer_id, c.name AS customer_name, b.status, b.paid_cents, b.payment_id, b.created_at, s.starts_at
           FROM clave_bookings b
@@ -1089,14 +1137,19 @@ export async function cancelBookingRecord({ bookingId, session, role }) {
   return cancelledResult.rows[0] ? bookingFromRow(cancelledResult.rows[0]) : null;
 }
 
-export async function checkInBookingRecord({ bookingId }) {
+export async function checkInBookingRecord({ bookingId, session }) {
   const result = await sql`
     UPDATE clave_bookings b
     SET status = 'checked-in'
-    FROM clave_customers c
+    FROM clave_customers c, clave_sessions s
     WHERE b.id = ${bookingId}
       AND b.customer_id = c.id
+      AND b.session_id = s.id
       AND b.status = 'confirmed'
+      AND (
+        ${session.role} = 'admin'
+        OR (${session.locationId ?? null} IS NOT NULL AND s.location_id = ${session.locationId ?? null})
+      )
     RETURNING b.id, b.session_id, b.customer_id, c.name AS customer_name, b.status, b.paid_cents, b.payment_id, b.created_at
   `;
   return result.rows[0] ? bookingFromRow(result.rows[0]) : null;

@@ -2,6 +2,7 @@ import { countAdmins, ensureSchema, listCustomers, recordAdminAudit, sendError, 
 import { requireFreshRole } from "../server/roles.js";
 
 const allowedRoles = new Set(["customer", "staff", "admin"]);
+const allowedLocationIds = new Set(["scarborough", "fremantle"]);
 
 export default async function handler(request, response) {
   try {
@@ -14,9 +15,12 @@ export default async function handler(request, response) {
     }
 
     if (request.method === "POST") {
-      const { customerId, role } = request.body ?? {};
+      const { customerId, locationId, role } = request.body ?? {};
       if (!customerId || !allowedRoles.has(role)) {
         return sendJson(response, 400, { error: "bad_request", message: "Choose a valid customer role." });
+      }
+      if (role === "staff" && !allowedLocationIds.has(locationId)) {
+        return sendJson(response, 400, { error: "bad_request", message: "Choose the staff member's location." });
       }
 
       if (customerId === adminSession.customerId && role !== "admin" && (await countAdmins()) <= 1) {
@@ -26,12 +30,12 @@ export default async function handler(request, response) {
         });
       }
 
-      const customer = await updateCustomerRole({ customerId, role });
+      const customer = await updateCustomerRole({ customerId, locationId: role === "staff" ? locationId : null, role });
       if (!customer) return sendJson(response, 404, { error: "not_found", message: "Customer was not found." });
       await recordAdminAudit({
         action: "customer_role_updated",
         actorCustomerId: adminSession.customerId,
-        details: { role },
+        details: { locationId: role === "staff" ? locationId : null, role },
         targetCustomerId: customerId
       });
       return sendJson(response, 200, { customer, customers: await listCustomers() });

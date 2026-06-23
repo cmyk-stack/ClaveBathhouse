@@ -49,6 +49,7 @@ type Customer = {
   credits: number;
   paymentMethod: string;
   role: Role;
+  locationId?: string | null;
   stripeCustomerId?: string | null;
 };
 
@@ -254,6 +255,7 @@ const initialCustomers: Customer[] = [
     phone: "",
     membershipId: "drop-in",
     credits: 0,
+    locationId: null,
     paymentMethod: "",
     role: "admin"
   }
@@ -1185,11 +1187,11 @@ export function App() {
     }
   }
 
-  async function updateCustomerRole(customerId: string, role: Role) {
+  async function updateCustomerRole(customerId: string, role: Role, locationId?: string | null) {
     setBusyAction("profile");
     setOperationalMessage("");
     try {
-      const result = await postJson<CustomersResponse>("/api/customers", { customerId, role });
+      const result = await postJson<CustomersResponse>("/api/customers", { customerId, locationId, role });
       if (result.customers) setCustomers(result.customers);
       else if (result.customer) setCustomers((current) => current.map((customer) => (customer.id === customerId ? result.customer! : customer)));
       pushNotice("push", "Role updated", "Customer access was updated in Neon.");
@@ -1373,7 +1375,9 @@ export function App() {
               />
                 )}
 
-                {view === "staff" && canUseStaffTools && <StaffWorkspace bookings={bookings} busyAction={busyAction} checkIn={checkIn} sessions={sessions} />}
+                {view === "staff" && canUseStaffTools && (
+                  <StaffWorkspace bookings={bookings} busyAction={busyAction} checkIn={checkIn} currentCustomer={currentCustomer} sessions={sessions} />
+                )}
 
                 {view === "admin" && canUseAdminTools && (
               <AdminWorkspace
@@ -2251,19 +2255,30 @@ function StaffWorkspace({
   bookings,
   busyAction,
   checkIn,
+  currentCustomer,
   sessions
 }: {
   bookings: Booking[];
   busyAction: BusyAction;
   checkIn: (bookingId: string) => void;
+  currentCustomer: Customer;
   sessions: Session[];
 }) {
   const today = venueDateToday();
-  const futureSessions = sessions.filter(isFutureSession).sort((a, b) => sessionStartsAt(a).getTime() - sessionStartsAt(b).getTime());
+  const staffLocationId = currentCustomer.role === "admin" ? null : currentCustomer.locationId;
+  const scopedSessions =
+    currentCustomer.role === "admin"
+      ? sessions
+      : staffLocationId
+        ? sessions.filter((session) => (session.locationId ?? "scarborough") === staffLocationId)
+        : [];
+  const scopedSessionIds = new Set(scopedSessions.map((session) => session.id));
+  const scopedBookings = bookings.filter((booking) => scopedSessionIds.has(booking.sessionId));
+  const futureSessions = scopedSessions.filter(isFutureSession).sort((a, b) => sessionStartsAt(a).getTime() - sessionStartsAt(b).getTime());
   const todaysSessions = futureSessions.filter((session) => session.date === today);
   const sessionQueue = (todaysSessions.length > 0 ? todaysSessions : futureSessions).slice(0, 8);
   const todaysSessionIds = new Set(todaysSessions.map((session) => session.id));
-  const todaysBookings = bookings.filter((booking) => todaysSessionIds.has(booking.sessionId) && booking.status !== "cancelled");
+  const todaysBookings = scopedBookings.filter((booking) => todaysSessionIds.has(booking.sessionId) && booking.status !== "cancelled");
   const checkedInCount = todaysBookings.filter((booking) => booking.status === "checked-in").length;
   const expectedCount = todaysBookings.filter((booking) => booking.status === "confirmed").length;
   const waitlistCount = todaysBookings.filter((booking) => booking.status === "waitlist").length;
@@ -2278,6 +2293,7 @@ function StaffWorkspace({
           </div>
           <span className="pill">{formatShortDate(today)}</span>
         </div>
+        {staffLocationId && <p className="staff-location-note">{locations.find((location) => location.id === staffLocationId)?.name ?? "Assigned location"}</p>}
         <div className="staff-metrics" aria-label="Today's staff summary">
           <article>
             <span>Sessions</span>
@@ -2310,12 +2326,16 @@ function StaffWorkspace({
         <section className="surface staff-empty">
           <p className="eyebrow">Schedule</p>
           <h3>No published sessions</h3>
-          <p>Once an admin publishes sessions, staff check-ins and guest lists will appear here.</p>
+          <p>
+            {staffLocationId
+              ? "Once an admin publishes sessions for this staff member's location, check-ins and guest lists will appear here."
+              : "Once an admin publishes sessions, staff check-ins and guest lists will appear here."}
+          </p>
         </section>
       )}
 
       {sessionQueue.map((session) => {
-        const attendees = bookings
+        const attendees = scopedBookings
           .filter((booking) => booking.sessionId === session.id && booking.status !== "cancelled")
           .sort((a, b) => {
             const statusOrder: Record<BookingStatus, number> = { confirmed: 0, "checked-in": 1, waitlist: 2, cancelled: 3 };
@@ -2340,7 +2360,7 @@ function StaffWorkspace({
             <div className="staff-session-meta">
               <span>{location?.name ?? "Clave Bathhouse"}</span>
               <span>{session.practitioner}</span>
-              <span>{session.capacity - activeBookingsFor(session.id, bookings).length} spots open</span>
+              <span>{session.capacity - activeBookingsFor(session.id, scopedBookings).length} spots open</span>
             </div>
 
             <div className="attendance-list">
@@ -2402,7 +2422,7 @@ type AdminWorkspaceProps = {
   setNewTypeId: (value: string) => void;
   setAdminTab: (value: AdminTab) => void;
   transactions: Transaction[];
-  updateCustomerRole: (customerId: string, role: Role) => void;
+  updateCustomerRole: (customerId: string, role: Role, locationId?: string | null) => void;
   updateSession: (event: FormEvent<HTMLFormElement>, sessionId: string) => void;
 };
 
@@ -2795,20 +2815,48 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
           {filteredCustomers.length === 0 && <p className="empty-state">No customers match those filters.</p>}
           {filteredCustomers.map((customer) => (
             <article key={customer.id}>
-              <div>
+              <div className="customer-summary">
                 <strong>{customer.name}</strong>
                 <span>{customer.email}</span>
                 <span>{customer.phone || "No phone"} - {getPlan(customer.membershipId).name} - {customer.credits} credits</span>
                 <span>{bookings.filter((booking) => booking.customerId === customer.id && booking.status !== "cancelled").length} active bookings</span>
               </div>
-              <label className="customer-role-control">
-                <span>Role</span>
-                <select disabled={customer.id === currentCustomerId} value={customer.role} onChange={(event) => updateCustomerRole(customer.id, event.target.value as Role)}>
-                  <option value="customer">Customer</option>
-                  <option value="staff">Staff</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </label>
+              <div className="customer-controls">
+                <label className="customer-role-control">
+                  <span>Role</span>
+                  <select
+                    disabled={customer.id === currentCustomerId}
+                    value={customer.role}
+                    onChange={(event) =>
+                      updateCustomerRole(
+                        customer.id,
+                        event.target.value as Role,
+                        event.target.value === "staff" ? customer.locationId ?? locations[0].id : null
+                      )
+                    }
+                  >
+                    <option value="customer">Customer</option>
+                    <option value="staff">Staff</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </label>
+                {customer.role === "staff" && (
+                  <label className="customer-role-control">
+                    <span>Location</span>
+                    <select
+                      disabled={customer.id === currentCustomerId}
+                      value={customer.locationId ?? locations[0].id}
+                      onChange={(event) => updateCustomerRole(customer.id, "staff", event.target.value)}
+                    >
+                      {locations.map((location) => (
+                        <option key={location.id} value={location.id}>
+                          {location.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </div>
             </article>
           ))}
         </div>
