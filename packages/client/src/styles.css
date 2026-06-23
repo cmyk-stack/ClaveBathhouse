@@ -234,6 +234,38 @@ button.quiet {
   margin-bottom: 0;
 }
 
+.auth-restore-card {
+  align-content: center;
+}
+
+.auth-progress {
+  position: relative;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(38, 32, 25, 0.1);
+}
+
+.auth-progress::after {
+  position: absolute;
+  inset: 0;
+  width: 45%;
+  border-radius: inherit;
+  background: #2a2018;
+  content: "";
+  animation: auth-progress 1.1s ease-in-out infinite;
+}
+
+@keyframes auth-progress {
+  0% {
+    transform: translateX(-110%);
+  }
+
+  100% {
+    transform: translateX(230%);
+  }
+}
+
 .auth-form {
   display: grid;
   gap: 10px;

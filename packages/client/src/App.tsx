@@ -431,9 +431,14 @@ function defaultViewForRole(role: Role): AppView {
 
 export function App() {
   const persistedState = useMemo(() => readPersistedState(), []);
+  const isAuthCallback = useMemo(() => {
+    const authParams = new URLSearchParams(window.location.search);
+    return authParams.get("auth") === "google_success";
+  }, []);
   const [view, setView] = useState<AppView>(normalizeAppView(persistedState.view));
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isRestoringAuth, setIsRestoringAuth] = useState(isAuthCallback);
   const [sessions, setSessions] = useState<Session[]>(initialSessions);
   const [bookings, setBookings] = useState<Booking[]>(initialBookings);
   const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
@@ -497,6 +502,7 @@ export function App() {
     const handoffToken = authParams.get("handoff");
 
     if (authResult === "google_success" && handoffToken) {
+      setIsRestoringAuth(true);
       postJson<AuthResponse>("/api/auth/handoff", { token: handoffToken })
         .then((result) => {
           if (!result.customer) throw new Error("Google sign in finished, but the account could not be loaded.");
@@ -510,10 +516,14 @@ export function App() {
         .catch((error) => {
           setAuthMessage(error instanceof Error ? error.message : "Google sign in finished, but the session could not be restored.");
           setSyncStatus("local");
+        })
+        .finally(() => {
+          setIsRestoringAuth(false);
         });
       return;
     }
 
+    if (authResult === "google_success") setIsRestoringAuth(true);
     getJson<AuthResponse>("/api/auth")
       .then((result) => {
         if (!result.customer) {
@@ -533,6 +543,9 @@ export function App() {
           setAuthMessage(error instanceof Error ? error.message : "Google sign in finished, but the session could not be restored.");
         }
         setSyncStatus("local");
+      })
+      .finally(() => {
+        setIsRestoringAuth(false);
       });
   }, []);
 
@@ -1283,7 +1296,9 @@ export function App() {
             </div>
           </header>
 
-          {!isAuthenticated ? (
+          {isRestoringAuth ? (
+            <AuthRestoring />
+          ) : !isAuthenticated ? (
             <AuthWorkspace
               authEmail={authEmail}
               authMessage={authMessage}
@@ -1551,6 +1566,19 @@ function AuthWorkspace({
             <span>Google</span>
           </button>
         </div>
+      </div>
+    </section>
+  );
+}
+
+function AuthRestoring() {
+  return (
+    <section className="auth-screen">
+      <div className="auth-card auth-restore-card" aria-live="polite">
+        <p className="eyebrow">Member access</p>
+        <h3>Signing you in</h3>
+        <p>Finishing your secure Google sign in.</p>
+        <div className="auth-progress" aria-hidden="true" />
       </div>
     </section>
   );
