@@ -212,6 +212,19 @@ function venueDateToday() {
   return `${value("year")}-${value("month")}-${value("day")}`;
 }
 
+function venueDateKeyFromTimestamp(timestamp: string) {
+  const parsed = new Date(timestamp);
+  if (Number.isNaN(parsed.getTime())) return timestamp.slice(0, 10);
+  const parts = new Intl.DateTimeFormat("en-AU", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "Australia/Perth",
+    year: "numeric"
+  }).formatToParts(parsed);
+  const value = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  return `${value("year")}-${value("month")}-${value("day")}`;
+}
+
 function sessionStartsAt(session: Session) {
   if (session.startsAt) return new Date(session.startsAt);
   return new Date(`${session.date}T${session.time}:00+08:00`);
@@ -469,8 +482,6 @@ export function App() {
 
   const customerBookings = bookings.filter((booking) => booking.customerId === currentCustomer.id);
   const customerActiveBookings = customerBookings.filter((booking) => booking.status !== "cancelled");
-  const occupancy =
-    sessions.reduce((sum, session) => sum + activeBookingsFor(session.id, bookings).length / session.capacity, 0) / Math.max(sessions.length, 1);
 
   useEffect(() => {
     const nextState: PersistedAppState = {
@@ -1397,7 +1408,6 @@ export function App() {
                 newPractitioner={newPractitioner}
                 newTime={newTime}
                 newTypeId={newTypeId}
-                occupancy={occupancy}
                 refund={refund}
                 refreshHealth={refreshHealth}
                 sessions={sessions}
@@ -2409,7 +2419,6 @@ type AdminWorkspaceProps = {
   newPractitioner: string;
   newTime: string;
   newTypeId: string;
-  occupancy: number;
   refund: (transactionId: string) => void;
   refreshHealth: () => void;
   sessions: Session[];
@@ -2444,7 +2453,6 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
     newPractitioner,
     newTime,
     newTypeId,
-    occupancy,
     refund,
     refreshHealth,
     sessions,
@@ -2467,9 +2475,19 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
   const [scheduleWeekStart, setScheduleWeekStart] = useState(() => localDateAfter(0));
   const [userSearch, setUserSearch] = useState("");
   const [userRoleFilter, setUserRoleFilter] = useState<Role | "all">("all");
-  const activeBookings = bookings.filter((booking) => booking.status !== "cancelled");
-  const waitlistBookings = bookings.filter((booking) => booking.status === "waitlist");
-  const checkedInBookings = bookings.filter((booking) => booking.status === "checked-in");
+  const today = venueDateToday();
+  const todaySessionIds = new Set(sessions.filter((session) => session.date === today).map((session) => session.id));
+  const todayBookings = bookings.filter((booking) => todaySessionIds.has(booking.sessionId));
+  const activeBookings = todayBookings.filter((booking) => booking.status !== "cancelled");
+  const waitlistBookings = todayBookings.filter((booking) => booking.status === "waitlist");
+  const checkedInBookings = todayBookings.filter((booking) => booking.status === "checked-in");
+  const todayCapacity = sessions.filter((session) => session.date === today).reduce((sum, session) => sum + session.capacity, 0);
+  const todayOccupied = todayBookings.filter((booking) => booking.status === "confirmed" || booking.status === "checked-in").length;
+  const occupancy = todayCapacity > 0 ? todayOccupied / todayCapacity : 0;
+  const todayTransactions = transactions.filter((transaction) => venueDateKeyFromTimestamp(transaction.date) === today);
+  const todayPaidTotal = todayTransactions.filter((transaction) => transaction.status === "paid").reduce((sum, transaction) => sum + transaction.amount, 0);
+  const todayRefundedTotal = todayTransactions.filter((transaction) => transaction.status === "refunded").reduce((sum, transaction) => sum + transaction.amount, 0);
+  const todayNetRevenue = todayPaidTotal - todayRefundedTotal;
   const paidTotal = transactions.filter((transaction) => transaction.status === "paid").reduce((sum, transaction) => sum + transaction.amount, 0);
   const refundedTotal = transactions.filter((transaction) => transaction.status === "refunded").reduce((sum, transaction) => sum + transaction.amount, 0);
   const scheduleDays = Array.from({ length: 7 }, (_, index) => addDays(scheduleWeekStart, index));
@@ -2510,19 +2528,19 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
         <>
           <section className="metric-band">
             <article>
-              <span>Revenue</span>
-              <strong>{formatCurrency(paidTotal)}</strong>
+              <span>Today revenue</span>
+              <strong>{formatCurrency(todayNetRevenue)}</strong>
             </article>
             <article>
-              <span>Occupancy</span>
+              <span>Today occupancy</span>
               <strong>{Math.round(occupancy * 100)}%</strong>
             </article>
             <article>
-              <span>Active bookings</span>
+              <span>Today active bookings</span>
               <strong>{activeBookings.length}</strong>
             </article>
             <article>
-              <span>Waitlist</span>
+              <span>Today waitlist</span>
               <strong>{waitlistBookings.length}</strong>
             </article>
           </section>
