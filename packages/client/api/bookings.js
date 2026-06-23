@@ -35,7 +35,12 @@ export default async function handler(request, response) {
       const { action, amountCents = 0, bookingId, sessionId } = request.body ?? {};
 
       if (action === "cancel") {
-        const booking = await cancelBookingRecord({ bookingId, session: effectiveSession, role: effectiveSession.role });
+        const cancelSession =
+          effectiveSession.role === "admin" || effectiveSession.role === "staff"
+            ? await requireFreshRole(request, response, ["staff", "admin"])
+            : effectiveSession;
+        if (!cancelSession) return;
+        const booking = await cancelBookingRecord({ bookingId, session: cancelSession, role: cancelSession.role });
         if (!booking) return sendJson(response, 409, { error: "not_cancellable", message: "That booking is already cancelled or cannot be cancelled." });
         const customer = await findCustomerById(booking.customerId);
         await sendTransactionalEmail({
@@ -45,10 +50,10 @@ export default async function handler(request, response) {
         });
         return sendJson(response, 200, {
           booking,
-          bookings: await listBookings({ customerId: effectiveSession.customerId, role: effectiveSession.role }),
+          bookings: await listBookings({ customerId: cancelSession.customerId, role: cancelSession.role }),
           customer: await findCustomerById(booking.customerId),
-          customers: effectiveSession.role === "admin" ? await listCustomers() : undefined,
-          transactions: await listTransactions({ customerId: effectiveSession.customerId, role: effectiveSession.role })
+          customers: cancelSession.role === "admin" ? await listCustomers() : undefined,
+          transactions: await listTransactions({ customerId: cancelSession.customerId, role: cancelSession.role })
         });
       }
 
