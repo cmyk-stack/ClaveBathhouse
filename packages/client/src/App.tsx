@@ -2499,6 +2499,9 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
   const sessionById = new Map(sessions.map((session) => [session.id, session]));
   const [bookingFilter, setBookingFilter] = useState<BookingStatus | "all">("all");
   const [bookingSearch, setBookingSearch] = useState("");
+  const [bookingLocationFilter, setBookingLocationFilter] = useState("all");
+  const [bookingDateFilter, setBookingDateFilter] = useState("upcoming");
+  const [bookingPage, setBookingPage] = useState(1);
   const [scheduleLocationFilter, setScheduleLocationFilter] = useState("all");
   const [scheduleWeekStart, setScheduleWeekStart] = useState(() => localDateAfter(0));
   const [userSearch, setUserSearch] = useState("");
@@ -2526,15 +2529,51 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
       return matchesLocation && session.date >= scheduleDays[0] && session.date <= scheduleDays[6];
     })
     .sort((a, b) => sessionStartsAt(a).getTime() - sessionStartsAt(b).getTime());
-  const filteredBookings = bookings.filter((booking) => {
-    const session = sessionById.get(booking.sessionId);
-    const haystack = `${booking.customerName} ${booking.status} ${session ? `${getSessionType(session.typeId).name} ${session.date} ${session.time}` : booking.sessionId}`.toLowerCase();
-    return (bookingFilter === "all" || booking.status === bookingFilter) && haystack.includes(bookingSearch.trim().toLowerCase());
-  });
+  const filteredBookings = bookings
+    .filter((booking) => {
+      const session = sessionById.get(booking.sessionId);
+      const sessionLocationId = session?.locationId ?? "scarborough";
+      const query = bookingSearch.trim().toLowerCase();
+      const haystack = `${booking.customerName} ${booking.status} ${booking.id} ${
+        session ? `${getSessionType(session.typeId).name} ${session.date} ${session.time} ${locations.find((location) => location.id === sessionLocationId)?.name ?? ""}` : booking.sessionId
+      }`.toLowerCase();
+      const matchesStatus = bookingFilter === "all" || booking.status === bookingFilter;
+      const matchesLocation = bookingLocationFilter === "all" || sessionLocationId === bookingLocationFilter;
+      const matchesDate =
+        bookingDateFilter === "all" ||
+        (session
+          ? bookingDateFilter === "today"
+            ? session.date === today
+            : bookingDateFilter === "upcoming"
+              ? session.date >= today
+              : session.date < today
+          : bookingDateFilter === "all");
+      return matchesStatus && matchesLocation && matchesDate && haystack.includes(query);
+    })
+    .sort((a, b) => {
+      const sessionA = sessionById.get(a.sessionId);
+      const sessionB = sessionById.get(b.sessionId);
+      const timeA = sessionA ? sessionStartsAt(sessionA).getTime() : new Date(a.createdAt).getTime();
+      const timeB = sessionB ? sessionStartsAt(sessionB).getTime() : new Date(b.createdAt).getTime();
+      return bookingDateFilter === "past" ? timeB - timeA : timeA - timeB;
+    });
+  const bookingsPerPage = 25;
+  const bookingPageCount = Math.max(1, Math.ceil(filteredBookings.length / bookingsPerPage));
+  const visibleBookings = filteredBookings.slice((bookingPage - 1) * bookingsPerPage, bookingPage * bookingsPerPage);
+  const bookingRangeStart = filteredBookings.length === 0 ? 0 : (bookingPage - 1) * bookingsPerPage + 1;
+  const bookingRangeEnd = Math.min(bookingPage * bookingsPerPage, filteredBookings.length);
   const filteredCustomers = customers.filter((customer) => {
     const haystack = `${customer.name} ${customer.email} ${customer.phone} ${customer.role} ${getPlan(customer.membershipId).name}`.toLowerCase();
     return (userRoleFilter === "all" || customer.role === userRoleFilter) && haystack.includes(userSearch.trim().toLowerCase());
   });
+
+  useEffect(() => {
+    setBookingPage(1);
+  }, [bookingDateFilter, bookingFilter, bookingLocationFilter, bookingSearch]);
+
+  useEffect(() => {
+    if (bookingPage > bookingPageCount) setBookingPage(bookingPageCount);
+  }, [bookingPage, bookingPageCount]);
 
   return (
     <div className="workspace-grid admin-grid">
@@ -2762,16 +2801,30 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
       )}
 
       {adminTab === "bookings" && (
-      <section className="surface">
+      <section className="surface admin-bookings">
         <div className="section-head">
           <div>
             <p className="eyebrow">Operations</p>
-            <h3>All bookings</h3>
+            <h3>Bookings</h3>
           </div>
-          <span className="pill">{filteredBookings.length} shown</span>
+          <span className="pill">{filteredBookings.length} matching</span>
         </div>
-        <div className="admin-filter-row">
-          <input value={bookingSearch} onChange={(event) => setBookingSearch(event.target.value)} placeholder="Search customer or session" />
+        <div className="admin-filter-row booking-filter-row">
+          <input value={bookingSearch} onChange={(event) => setBookingSearch(event.target.value)} placeholder="Search customer, booking, session" />
+          <select value={bookingDateFilter} onChange={(event) => setBookingDateFilter(event.target.value)}>
+            <option value="upcoming">Upcoming</option>
+            <option value="today">Today</option>
+            <option value="past">Past</option>
+            <option value="all">All dates</option>
+          </select>
+          <select value={bookingLocationFilter} onChange={(event) => setBookingLocationFilter(event.target.value)}>
+            <option value="all">All locations</option>
+            {locations.map((location) => (
+              <option key={location.id} value={location.id}>
+                {location.name}
+              </option>
+            ))}
+          </select>
           <select value={bookingFilter} onChange={(event) => setBookingFilter(event.target.value as BookingStatus | "all")}>
             <option value="all">All statuses</option>
             <option value="confirmed">Confirmed</option>
@@ -2780,24 +2833,54 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
             <option value="cancelled">Cancelled</option>
           </select>
         </div>
-        <div className="table-list">
+        <div className="booking-list-head">
+          <span>Customer</span>
+          <span>Visit</span>
+          <span>Status</span>
+          <span>Action</span>
+        </div>
+        <div className="table-list booking-list">
           {filteredBookings.length === 0 && <p className="empty-state">No bookings match those filters.</p>}
-          {filteredBookings.map((booking) => (
-            <div className="table-row" key={booking.id}>
-              <span>{booking.customerName}</span>
-              <span>
-                {(() => {
-                  const session = sessionById.get(booking.sessionId);
-                  return session ? `${getSessionType(session.typeId).name} ${session.date} ${session.time}` : booking.sessionId;
-                })()}
-              </span>
-              <span className={`status ${booking.status}`}>{booking.status}</span>
-              <button className="quiet" disabled={busyAction === "cancel" || booking.status === "cancelled" || booking.status === "checked-in"} onClick={() => cancelBooking(booking.id)}>
-                {busyAction === "cancel" ? "Cancelling" : "Cancel"}
-              </button>
-            </div>
+          {visibleBookings.map((booking) => (
+            <article className="booking-admin-row" key={booking.id}>
+              {(() => {
+                const session = sessionById.get(booking.sessionId);
+                const location = session ? locations.find((item) => item.id === (session.locationId ?? "scarborough")) : null;
+                return (
+                  <>
+                    <div className="booking-admin-customer">
+                      <strong>{booking.customerName}</strong>
+                      <small>{booking.id}</small>
+                    </div>
+                    <div className="booking-admin-visit">
+                      <strong>{session ? getSessionType(session.typeId).name : booking.sessionId}</strong>
+                      <small>{session ? `${formatShortDate(session.date)} at ${session.time} · ${location?.name ?? "Location TBC"}` : "Session not found"}</small>
+                    </div>
+                    <span className={`status ${booking.status}`}>{booking.status}</span>
+                    <button className="quiet" disabled={busyAction === "cancel" || booking.status === "cancelled" || booking.status === "checked-in"} onClick={() => cancelBooking(booking.id)}>
+                      {busyAction === "cancel" ? "Cancelling" : "Cancel"}
+                    </button>
+                  </>
+                );
+              })()}
+            </article>
           ))}
         </div>
+        {filteredBookings.length > bookingsPerPage && (
+          <div className="booking-pagination">
+            <span>
+              {bookingRangeStart}-{bookingRangeEnd} of {filteredBookings.length}
+            </span>
+            <div>
+              <button className="quiet" disabled={bookingPage === 1} onClick={() => setBookingPage((page) => Math.max(1, page - 1))}>
+                Previous
+              </button>
+              <button className="quiet" disabled={bookingPage === bookingPageCount} onClick={() => setBookingPage((page) => Math.min(bookingPageCount, page + 1))}>
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </section>
       )}
 

@@ -966,6 +966,10 @@ button.quiet {
   margin-bottom: 12px;
 }
 
+.booking-filter-row {
+  gap: 10px;
+}
+
 .session-list,
 .table-list,
 .attendance-list,
@@ -1298,6 +1302,81 @@ small,
   align-items: start;
 }
 
+.admin-bookings {
+  gap: 12px;
+}
+
+.booking-list-head {
+  display: none;
+}
+
+.booking-list {
+  gap: 10px;
+}
+
+.booking-admin-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid rgba(38, 32, 25, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 252, 246, 0.72);
+}
+
+.booking-admin-customer,
+.booking-admin-visit {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.booking-admin-customer strong,
+.booking-admin-visit strong {
+  overflow-wrap: anywhere;
+}
+
+.booking-admin-customer small,
+.booking-admin-visit small {
+  overflow-wrap: anywhere;
+  color: #736858;
+  font-size: 0.74rem;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.booking-admin-row .status {
+  justify-self: end;
+}
+
+.booking-admin-row button {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-height: 36px;
+}
+
+.booking-pagination {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 4px;
+  color: #736858;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.booking-pagination div {
+  display: flex;
+  gap: 8px;
+}
+
+.booking-pagination button {
+  min-height: 34px;
+  padding: 0.45rem 0.7rem;
+}
+
 .status.confirmed,
 .status.paid {
   background: #d9e6d8;
@@ -1593,6 +1672,42 @@ small,
 }
 
 @media (min-width: 640px) {
+  .booking-filter-row {
+    grid-template-columns: minmax(220px, 1.5fr) minmax(130px, 0.7fr) minmax(160px, 0.9fr) minmax(130px, 0.7fr);
+  }
+
+  .booking-list-head,
+  .booking-admin-row {
+    display: grid;
+    grid-template-columns: minmax(130px, 1fr) minmax(220px, 1.5fr) minmax(94px, 0.5fr) minmax(88px, 0.42fr);
+    gap: 12px;
+    align-items: center;
+  }
+
+  .booking-list-head {
+    padding: 0 12px;
+    color: #736858;
+    font-size: 0.68rem;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  .booking-admin-row {
+    min-height: 58px;
+    padding: 10px 12px;
+  }
+
+  .booking-admin-row .status {
+    justify-self: start;
+  }
+
+  .booking-admin-row button {
+    grid-column: auto;
+    justify-self: end;
+    width: auto;
+    min-width: 82px;
+  }
+
   .week-stepper {
     grid-template-columns: auto minmax(0, 1fr) auto;
   }
