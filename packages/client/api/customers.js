@@ -1,8 +1,7 @@
-import { countAdmins, ensureSchema, listCustomers, recordAdminAudit, sendError, sendJson, updateCustomerRole } from "../server/db.js";
+import { countAdmins, ensureSchema, listCustomers, listLocationIds, recordAdminAudit, sendError, sendJson, updateCustomerRole } from "../server/db.js";
 import { requireFreshRole } from "../server/roles.js";
 
 const allowedRoles = new Set(["customer", "staff", "admin"]);
-const allowedLocationIds = new Set(["scarborough", "fremantle"]);
 
 export default async function handler(request, response) {
   try {
@@ -19,6 +18,7 @@ export default async function handler(request, response) {
       if (!customerId || !allowedRoles.has(role)) {
         return sendJson(response, 400, { error: "bad_request", message: "Choose a valid customer role." });
       }
+      const allowedLocationIds = new Set(await listLocationIds());
       if (role === "staff" && !allowedLocationIds.has(locationId)) {
         return sendJson(response, 400, { error: "bad_request", message: "Choose the staff member's location." });
       }

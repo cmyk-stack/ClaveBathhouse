@@ -2948,6 +2948,9 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
                 <strong>{customer.name}</strong>
                 <span>{customer.email}</span>
                 <span>{customer.phone || "No phone"} - {getPlan(customer.membershipId).name} - {customer.credits} credits</span>
+                {customer.role === "staff" && (
+                  <span>{locations.find((location) => location.id === customer.locationId)?.name ?? "No staff location assigned"}</span>
+                )}
                 <span>{bookings.filter((booking) => booking.customerId === customer.id && booking.status !== "cancelled").length} active bookings</span>
               </div>
               <div className="customer-controls">
@@ -2969,22 +2972,20 @@ function AdminWorkspace(props: AdminWorkspaceProps) {
                     <option value="admin">Admin</option>
                   </select>
                 </label>
-                {customer.role === "staff" && (
-                  <label className="customer-role-control">
-                    <span>Location</span>
-                    <select
-                      disabled={customer.id === currentCustomerId}
-                      value={customer.locationId ?? locations[0].id}
-                      onChange={(event) => updateCustomerRole(customer.id, "staff", event.target.value)}
-                    >
-                      {locations.map((location) => (
-                        <option key={location.id} value={location.id}>
-                          {location.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
+                <label className="customer-role-control">
+                  <span>Staff location</span>
+                  <select
+                    disabled={customer.id === currentCustomerId || customer.role !== "staff"}
+                    value={customer.locationId ?? locations[0].id}
+                    onChange={(event) => updateCustomerRole(customer.id, "staff", event.target.value)}
+                  >
+                    {locations.map((location) => (
+                      <option key={location.id} value={location.id}>
+                        {location.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
             </article>
           ))}

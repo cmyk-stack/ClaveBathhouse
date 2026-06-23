@@ -392,6 +392,16 @@ export async function listCustomers() {
   return result.rows.map(customerFromRow);
 }
 
+export async function listLocationIds() {
+  const result = await sql`
+    SELECT id
+    FROM clave_locations
+    ORDER BY name
+  `;
+
+  return result.rows.map((row) => row.id);
+}
+
 export async function verifyPasswordResetToken({ email, token }) {
   const result = await sql`
     SELECT id, name, email, phone, membership_id, credits, payment_method, password_hash, role, stripe_customer_id, location_id
